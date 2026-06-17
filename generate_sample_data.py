@@ -2,8 +2,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-# Seeding randomness so the sample data is reproducible - anyone running this
-# gets the same file, which keeps the demo and screenshots consistent.
+# Seeding randomness so the sample data is reproducible. Anyone running this gets
+# the same file, which keeps the demo and screenshots consistent.
 np.random.seed(42)
 
 NUM_PLAYERS = 200
@@ -13,15 +13,21 @@ TODAY = datetime(2026, 6, 1)  # fixed "today" so recency math is stable across r
 player_ids = [f"P{100000 + i}" for i in range(NUM_PLAYERS)]
 universal_ids = [f"U{np.random.randint(10000000, 99999999)}" for _ in range(NUM_PLAYERS)]
 
-# ---------- Core value metric ----------
-# NetADT = net average daily theoretical, the casino's core per-player value metric.
-# Exponential distribution because most players are low value and a small group
-# drives most of the worth - that's the real-world shape of player data.
-net_adt = np.round(np.random.exponential(scale=45, size=NUM_PLAYERS), 2)
+first_names = np.random.choice(
+    ["James","Maria","Robert","Linda","Michael","Patricia","David","Jennifer",
+     "John","Elizabeth","William","Susan","Richard","Jessica","Joseph","Karen",
+     "Thomas","Nancy","Carlos","Sofia","Wei","Mei","Raj","Priya","Ahmed","Fatima"],
+    size=NUM_PLAYERS)
+last_names = np.random.choice(
+    ["Smith","Johnson","Williams","Brown","Jones","Garcia","Miller","Davis",
+     "Rodriguez","Martinez","Hernandez","Lopez","Gonzalez","Wilson","Anderson",
+     "Thomas","Lee","Patel","Nguyen","Kim","Chen","Singh","Khan","Ali"],
+    size=NUM_PLAYERS)
+# A combined full name column, handy for display and for searching by whole name.
+full_names = [f"{f} {l}" for f, l in zip(first_names, last_names)]
 
-# I turn NetADT into a 0-1 "value factor" so every downstream amount (offers,
-# coin-in) can scale with how valuable a player actually is. Whales sit near 1,
-# casuals near 0. This keeps the data realistic - no $5 player getting a $2000 offer.
+# ---------- Core value metric ----------
+net_adt = np.round(np.random.exponential(scale=45, size=NUM_PLAYERS), 2)
 value_factor = (net_adt - net_adt.min()) / (net_adt.max() - net_adt.min())
 
 # ---------- Dates and recency ----------
@@ -29,9 +35,6 @@ signup_dates_dt = [TODAY - timedelta(days=int(np.random.randint(180, 2200))) for
 last_visit_dates_dt = [TODAY - timedelta(days=int(np.random.randint(1, 540))) for _ in range(NUM_PLAYERS)]
 signup_dates = [d.strftime("%Y-%m-%d") for d in signup_dates_dt]
 last_visit_dates = [d.strftime("%Y-%m-%d") for d in last_visit_dates_dt]
-
-# Pre-computing recency so segmentation logic stays clean later. Days since last
-# visit is the single best signal for spotting at-risk and churned players.
 days_since_last_visit = [(TODAY - d).days for d in last_visit_dates_dt]
 
 # ---------- Visit frequency ----------
@@ -44,22 +47,14 @@ lifetime_value = np.round(net_adt * total_visits_year * np.random.uniform(0.8, 1
 account_balance = np.round(np.random.exponential(scale=500, size=NUM_PLAYERS), 2)
 
 # ---------- Cash flow behavior ----------
-# Maps directly onto banking deposit/withdrawal analysis, which is what makes
-# this same tool reusable for a finance demo.
 deposits_month = np.round(np.random.exponential(scale=300, size=NUM_PLAYERS), 2)
 withdrawals_month = np.round(deposits_month * np.random.uniform(0.3, 1.1, size=NUM_PLAYERS), 2)
 
 # ---------- Offers (comps) ----------
-# Each offer snaps to a fixed increment, the way real tiered comps work - you
-# offer $20 or $40 of slot play, never $37. A player's value_factor decides how
-# far up the ladder they land, so high-value players get bigger offers.
 def tiered_offer(step, cap):
-    # Build the ladder of allowed values (0, step, 2*step, ... up to cap).
     ladder = np.arange(0, cap + step, step)
     offers = []
     for vf in value_factor:
-        # value_factor places the player on the ladder; a little noise keeps it
-        # from being a perfectly straight line.
         pos = np.clip(vf + np.random.uniform(-0.15, 0.15), 0, 1)
         idx = int(round(pos * (len(ladder) - 1)))
         offers.append(ladder[idx])
@@ -69,14 +64,9 @@ offer_slots = tiered_offer(20, 1000)
 offer_tables = tiered_offer(30, 1500)
 offer_food = tiered_offer(45, 1300)
 offer_hotel = tiered_offer(200, 2000)
-
-# OfferTotal is the sum of the parts so the data always reconciles - if someone
-# adds the columns up, it matches the total exactly.
 offer_total = offer_slots + offer_tables + offer_food + offer_hotel
 
-# ---------- Coin-in (actual money cycled through play) ----------
-# Coin-in scales with value too, but with more randomness since actual play
-# varies more than the structured offers do.
+# ---------- Coin-in ----------
 def scaled_coin_in(base):
     return np.round(base * (0.2 + value_factor) * np.random.uniform(0.5, 1.5, size=NUM_PLAYERS), 2)
 
@@ -87,19 +77,14 @@ coin_in_hotel = scaled_coin_in(1200)
 coin_in_total = np.round(coin_in_slots + coin_in_tables + coin_in_food + coin_in_hotel, 2)
 
 # ---------- Risk / credit ----------
-# A universal concept that bridges casino and banking cleanly.
-risk_score = np.random.randint(300, 850, size=NUM_PLAYERS)  # mirrors a credit-score range
+risk_score = np.random.randint(300, 850, size=NUM_PLAYERS)
 credit_tiers = np.where(risk_score >= 720, "Low Risk",
                 np.where(risk_score >= 580, "Medium Risk", "High Risk"))
-
 household_income = np.random.choice(
     ["<50k", "50k-100k", "100k-150k", "150k-250k", "250k+"],
-    size=NUM_PLAYERS, p=[0.35, 0.30, 0.20, 0.10, 0.05]
-)
+    size=NUM_PLAYERS, p=[0.35, 0.30, 0.20, 0.10, 0.05])
 
 # ---------- Consent flags ----------
-# Ties to the campaign validation work I did, where contactability rules decide
-# who can actually be marketed to.
 can_email = np.random.choice(["Yes", "No"], size=NUM_PLAYERS, p=[0.7, 0.3])
 can_call = np.random.choice(["Yes", "No"], size=NUM_PLAYERS, p=[0.5, 0.5])
 
@@ -108,12 +93,14 @@ zip_codes = [f"{np.random.randint(10000, 99999)}" for _ in range(NUM_PLAYERS)]
 tier_ranks = np.random.choice(["Bronze", "Silver", "Gold", "Platinum"],
                               size=NUM_PLAYERS, p=[0.5, 0.3, 0.15, 0.05])
 preferred_games = np.random.choice(
-    ["Slots", "Blackjack", "Poker", "Roulette", "Baccarat"], size=NUM_PLAYERS
-)
+    ["Slots", "Blackjack", "Poker", "Roulette", "Baccarat"], size=NUM_PLAYERS)
 
 df = pd.DataFrame({
     "PlayerID": player_ids,
     "UniversalID": universal_ids,
+    "FirstName": first_names,
+    "LastName": last_names,
+    "FullName": full_names,
     "NetADT": net_adt,
     "SignUpDate": signup_dates,
     "LastVisitDate": last_visit_dates,
@@ -145,13 +132,17 @@ df = pd.DataFrame({
     "PreferredGame": preferred_games,
 })
 
-# Intentionally dirtying a slice of the data so the cleanup agent has real work
-# in the demo: missing NetADT, blank emails, missing zips, and inconsistent
-# casing on consent flags - all issues I'd genuinely see in a raw player export.
+# Intentionally dirtying a slice of the data so the cleanup agent has real work.
 df.loc[df.sample(frac=0.05).index, "NetADT"] = np.nan
 df.loc[df.sample(frac=0.04).index, "CanEmail"] = ""
 df.loc[df.sample(frac=0.03).index, "ZipCode"] = np.nan
 df.loc[df.sample(frac=0.06).index, "CanCall"] = df["CanCall"].str.lower()
 
 df.to_csv("sample_players.csv", index=False)
+
+# Also write a blank template: same headers, no rows, so anyone can fill in their
+# own players and upload it back into the tool.
+df.head(0).to_csv("player_template.csv", index=False)
+
 print(f"Created sample_players.csv with {len(df)} players and {len(df.columns)} columns.")
+print("Created player_template.csv (headers only, for users to fill in).")
