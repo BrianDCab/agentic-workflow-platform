@@ -142,3 +142,79 @@ Create Recommendations
 Review Individual Records
    ↓
 Export Results
+
+```
+
+## Autonomous Agent Mode
+
+The project includes an experimental autonomous mode where the AI chooses which analysis step to run next.
+
+The agent can decide to:
+
+Clean the data
+Segment records
+Calculate value by segment
+Run Pareto-style analysis
+Finish with a recommendation
+
+There is also a step-by-step mode where the user can approve each action before it runs.
+
+This was included to demonstrate agentic workflow design with validation and human approval, not just simple prompt-response behavior.
+
+Running Locally
+
+Clone the repository:
+
+git clone https://github.com/BrianDCab/agentic-workflow-platform.git
+cd agentic-workflow-platform
+
+Create and activate a virtual environment:
+
+python -m venv venv
+
+On Windows:
+
+venv\Scripts\activate
+
+Install dependencies:
+
+pip install -r requirements.txt
+
+Create a .env file:
+
+GROQ_API_KEY=your_groq_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here
+
+Run the app:
+
+streamlit run app.py
+Environment Variables
+
+The app expects these environment variables:
+
+GROQ_API_KEY
+GEMINI_API_KEY
+
+API keys are not committed to the repository.
+
+Project Files
+app.py                    Main Streamlit application
+requirements.txt          Python dependencies
+sample_players.csv        Demo player/customer dataset
+sample_companies.csv      Demo company/account dataset
+player_template.csv       Blank player/customer template
+company_template.csv      Blank company/account template
+generate_sample_data.py   Demo data generation script
+generate_company_data.py  Company demo data generation script
+Notes
+Demo datasets are sample/synthetic data.
+AI recommendations are intended to support analysis, not replace human review.
+Suggested comp tiers and business recommendations should be adjusted to match the real organization’s policy.
+The autonomous agent mode is experimental and intentionally includes review/approval options.
+Author
+
+## Built by Brian Cabrera
+
+Portfolio: https://briancabrera.io
+LinkedIn: https://www.linkedin.com/in/briandacellcabrera/
+GitHub: https://github.com/BrianDCab
