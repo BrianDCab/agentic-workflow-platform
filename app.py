@@ -1,15 +1,17 @@
 import os
 import re
+import json
 import pandas as pd
 import altair as alt
 from dotenv import load_dotenv
 from groq import Groq
+import google.generativeai as genai
 import streamlit as st
 
-# Load my Groq key from .env so it never lives in the code itself.
+# Load my API keys from .env so they never live in the code itself.
 load_dotenv()
 
-st.set_page_config(page_title="Segmentation Agent", page_icon="🎲", layout="centered")
+st.set_page_config(page_title="Segmentation Agent", page_icon="\U0001F3B2", layout="centered")
 
 CYAN = "#22D3EE"; VIOLET = "#A78BFA"; AMBER = "#F5A623"
 
@@ -27,6 +29,8 @@ st.markdown("""
     .rec-why { color: #7FE7F5; font-weight: 700; }
     .insight { background: rgba(34,211,238,0.06); border-left: 3px solid rgba(34,211,238,0.6);
                padding: 8px 12px; border-radius: 4px; margin: 6px 0 2px 0; color:#CFEfff; }
+    .ai-banner { background: rgba(245,166,35,0.10); border:1px solid rgba(245,166,35,0.5);
+                 color:#F5C77E; padding:6px 12px; border-radius:6px; font-size:0.85rem; margin:4px 0; }
     .head-cyan   { color:#22D3EE; font-size:1.6rem; font-weight:800; text-shadow:0 0 10px rgba(34,211,238,0.4); margin:4px 0; }
     .head-violet { color:#A78BFA; font-size:1.6rem; font-weight:800; text-shadow:0 0 10px rgba(167,139,250,0.4); margin:4px 0; }
     .head-amber  { color:#F5A623; font-size:1.6rem; font-weight:800; text-shadow:0 0 10px rgba(245,166,35,0.4); margin:4px 0; }
@@ -78,20 +82,6 @@ def insight(text):
     st.markdown(f"<div class='insight'>{text}</div>", unsafe_allow_html=True)
 
 
-GLOSSARY = {
-    "NetADT": "Net Average Daily Theoretical. The casino's expected profit from a player per day of play, in currency. The core value metric.",
-    "Recency": "How long since the record was last active. The strongest signal for spotting someone drifting away.",
-    "Pareto": "A ranking of categories by size with a running cumulative percentage. Shows whether a few categories drive most of the total.",
-    "Debt to Equity": "A company's debt divided by its equity. Above about 1.5 signals heavy leverage and higher risk.",
-    "Segment": "A group of records sharing value and behavior traits, so each group can be acted on differently.",
-    "Median": "The middle value when all values are lined up. Used to fill gaps because it is not skewed by extremes.",
-    "Quartile": "One of four equal slices of the data by rank. Top quartile means the highest 25% by value.",
-}
-
-def term(label, key=None):
-    definition = GLOSSARY.get(key or label, "").replace("'", "&#39;")
-    return f"<span class='term' title='{definition}'>{label}</span>"
-
 def money(x, sym):
     try:
         return f"{sym}{x:,.2f}"
@@ -104,27 +94,7 @@ def clean_money_series(s):
     return pd.to_numeric(cleaned, errors="coerce")
 
 
-def format_recommendations(raw):
-    html = []
-    for line in raw.splitlines():
-        s = line.strip()
-        if not s: continue
-        if s.startswith("###"):
-            html.append(f"<div style='color:#FFFFFF;font-weight:800;font-size:1.05rem;margin-top:14px'>{s.lstrip('# ').strip()}</div>")
-        elif s.lower().startswith("**what the data shows:**"):
-            html.append(f"<div style='margin-top:4px'><b>What the data shows:</b> {s.split(':**',1)[1].strip()}</div>")
-        elif s.lower().startswith("**do this:**"):
-            html.append(f"<div style='margin-top:4px'><span class='rec-do'>Do this:</span> {s.split(':**',1)[1].strip()}</div>")
-        elif s.lower().startswith("**why it helps:**"):
-            html.append(f"<div style='margin-top:4px'><span class='rec-why'>Why it helps:</span> {s.split(':**',1)[1].strip()}</div>")
-        else:
-            html.append(f"<div>{s}</div>")
-    return "<div>" + "".join(html) + "</div>"
-
-
-# ============================================================
-# Plain-English analysis lines (computed from real numbers, not AI)
-# ============================================================
+# Plain-English analysis lines (computed from real numbers, not AI).
 def segments_insight(counts, value_table, sym):
     top_seg = value_table.index[0]
     top_val = value_table.iloc[0]["TotalValue"]; total_val = value_table["TotalValue"].sum()
@@ -150,12 +120,70 @@ def pareto_insight(pareto_raw, sym):
             "Categories that drive most of the spend are where small changes move the budget most.")
 
 
+GLOSSARY = {
+    "NetADT": "Net Average Daily Theoretical. The casino's expected profit from a player per day of play, in currency. The core value metric.",
+    "Recency": "How long since the record was last active. The strongest signal for spotting someone drifting away.",
+    "Pareto": "A ranking of categories by size with a running cumulative percentage. Shows whether a few categories drive most of the total.",
+    "Debt to Equity": "A company's debt divided by its equity. Above about 1.5 signals heavy leverage and higher risk.",
+    "Segment": "A group of records sharing value and behavior traits, so each group can be acted on differently.",
+    "Median": "The middle value when all values are lined up. Used to fill gaps because it is not skewed by extremes.",
+    "Quartile": "One of four equal slices of the data by rank. Top quartile means the highest 25% by value.",
+}
+
+def term(label, key=None):
+    definition = GLOSSARY.get(key or label, "").replace("'", "&#39;")
+    return f"<span class='term' title='{definition}'>{label}</span>"
+
+
+def format_recommendations(raw):
+    html = []
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s: continue
+        if s.startswith("###"):
+            html.append(f"<div style='color:#FFFFFF;font-weight:800;font-size:1.05rem;margin-top:14px'>{s.lstrip('# ').strip()}</div>")
+        elif s.lower().startswith("**what the data shows:**"):
+            html.append(f"<div style='margin-top:4px'><b>What the data shows:</b> {s.split(':**',1)[1].strip()}</div>")
+        elif s.lower().startswith("**do this:**"):
+            html.append(f"<div style='margin-top:4px'><span class='rec-do'>Do this:</span> {s.split(':**',1)[1].strip()}</div>")
+        elif s.lower().startswith("**why it helps:**"):
+            html.append(f"<div style='margin-top:4px'><span class='rec-why'>Why it helps:</span> {s.split(':**',1)[1].strip()}</div>")
+        else:
+            html.append(f"<div>{s}</div>")
+    return "<div>" + "".join(html) + "</div>"
+
+
 # ============================================================
-# Shared engine
+# AI layer with failover: try Groq first, fall back to Gemini on any error
+# (rate limit included), report which provider answered. Returns (text, label).
 # ============================================================
+def _groq_call(prompt, system=None):
+    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    messages = ([{"role": "system", "content": system}] if system else []) + \
+               [{"role": "user", "content": prompt}]
+    r = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=messages)
+    return r.choices[0].message.content
+
+def _gemini_call(prompt, system=None):
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    full = (system + "\n\n" + prompt) if system else prompt
+    r = model.generate_content(full)
+    return r.text
+
+def ai_generate(prompt, system=None):
+    try:
+        return _groq_call(prompt, system), "Groq (llama-3.3-70b)"
+    except Exception:
+        try:
+            return _gemini_call(prompt, system), "Gemini (backup)"
+        except Exception:
+            return ("The AI is unavailable right now (both the primary and backup "
+                    "providers could not be reached). The data, charts, and segment "
+                    "analytics above are all still accurate. Try the AI again shortly."), "none"
+
 
 def get_recommendations(role, data_profile, seg_summary, val_summary, user_goal, sym, cur_name):
-    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
     prompt = f"""You are {role} reviewing one specific uploaded dataset. All money figures are in {cur_name} ({sym}).
 
 DATA PROFILE (real numbers from this file):
@@ -177,14 +205,10 @@ Write exactly 4 items. Put each label on its own separate line. Use this exact f
 **Why it helps:** one sentence tying it to the user's goal.
 
 Every money figure must show the {sym} symbol. Keep it under 320 words. Do not use dashes as punctuation."""
-    response = client.chat.completions.create(model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}])
-    return response.choices[0].message.content
+    return ai_generate(prompt)
 
 
-@st.cache_data(show_spinner=False)
 def get_record_recommendation(role, name_label, detail_text, user_goal, sym, cur_name):
-    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
     prompt = f"""You are {role}. All money is in {cur_name} ({sym}). Here is one specific record:
 
 {detail_text}
@@ -195,13 +219,10 @@ In 2 to 3 short sentences, recommend the single best next action for {name_label
 Be specific and reference their actual numbers. Put the {sym} symbol directly before every
 money amount, including debt, equity, liabilities, and revenue, like {sym}210,437.66.
 Do not use dashes as punctuation."""
-    response = client.chat.completions.create(model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}])
-    return response.choices[0].message.content
+    return ai_generate(prompt)
 
 
 def chat_answer(role, context, history, sym, cur_name):
-    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
     system = (f"You are {role} helping a user understand one specific analyzed dataset. "
               f"All money is in {cur_name} ({sym}); always show the {sym} symbol on amounts. "
               f"Use only the context below to answer. The roster lists individual records you "
@@ -209,29 +230,22 @@ def chat_answer(role, context, history, sym, cur_name):
               f"differences). If asked about a record truly not in the roster or something "
               f"unrelated, say so plainly. Keep answers short and concrete. Do not use dashes "
               f"as punctuation.\n\nCONTEXT:\n{context}")
-    messages = [{"role": "system", "content": system}] + history
-    response = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=messages)
-    return response.choices[0].message.content
+    convo = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in history)
+    return ai_generate(convo, system)
 
 
-@st.cache_data(show_spinner=False)
 def describe_columns_ai(columns, sample_row):
-    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
     prompt = ("For each column, say in 4 words or fewer what it appears to be. "
               "Reply as 'column = description' lines, nothing else.\n"
               f"Columns and one sample value:\n" +
               "\n".join(f"{c} = {sample_row.get(c, '')}" for c in columns))
-    try:
-        r = client.chat.completions.create(model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}])
-        out = {}
-        for line in r.choices[0].message.content.splitlines():
-            if "=" in line:
-                k, v = line.split("=", 1)
-                out[k.strip()] = v.strip()
-        return out
-    except Exception:
-        return {}
+    text, _ = ai_generate(prompt)
+    out = {}
+    for line in text.splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            out[k.strip()] = v.strip()
+    return out
 
 
 def build_summary_report(title, health_lines, value_table, recs):
@@ -255,7 +269,7 @@ def value_band_chart(series, label, sym, color):
     label_clean = re.sub(r"[^0-9A-Za-z ]", "", str(label))
     return alt.Chart(band_df).mark_bar(color=color, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
         x=alt.X("Band:N", sort=None, title=f"{label_clean} band", axis=alt.Axis(labelAngle=-30)),
-        y=alt.Y("Records:Q", title="Number of records"), tooltip=["Band","Records"]).properties(height=280)
+        y=alt.Y("Records:Q", title="Number of records"), tooltip=["Band", "Records"]).properties(height=280)
 
 
 def segment_chart(counts, meanings, color):
@@ -263,7 +277,7 @@ def segment_chart(counts, meanings, color):
                          "Meaning": [meanings.get(s, "") for s in counts.index]})
     return alt.Chart(data).mark_bar(color=color, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
         x=alt.X("Segment:N", sort="-y", title=None, axis=alt.Axis(labelAngle=-30)),
-        y=alt.Y("Records:Q", title="Number of records"), tooltip=["Segment","Records","Meaning"]).properties(height=320)
+        y=alt.Y("Records:Q", title="Number of records"), tooltip=["Segment", "Records", "Meaning"]).properties(height=320)
 
 
 def pareto_chart(pareto_raw, color):
@@ -278,6 +292,47 @@ def build_roster(df, id_col, value_col):
                         value_col, "DaysSinceLastVisit", "MonthsSinceContact", "TierRank"]
             if c and c in df.columns]
     return df[keep].to_csv(index=False)
+
+
+# ============================================================
+# Per-segment analytics, computed from real numbers (no AI, instant, accurate).
+# ============================================================
+def segment_overview_table(segmented, value_col, id_col, sym):
+    g = segmented.groupby("Segment")
+    rows = []
+    total_val = clean_money_series(segmented[value_col]).sum()
+    for seg, sub in g:
+        vals = clean_money_series(sub[value_col])
+        tv = vals.sum()
+        rows.append({
+            "Segment": seg,
+            "Records": len(sub),
+            "% of records": f"{len(sub)/len(segmented)*100:.0f}%",
+            "Total value": money(tv, sym),
+            "Avg value": money(vals.mean(), sym),
+            "% of value": f"{(tv/total_val*100 if total_val else 0):.0f}%",
+        })
+    return pd.DataFrame(rows).sort_values("Records", ascending=False)
+
+def segment_deep_dive(segmented, seg_name, value_col, id_col, sym, meanings):
+    sub = segmented[segmented["Segment"] == seg_name].copy()
+    vals = clean_money_series(sub[value_col])
+    lines = []
+    meaning = meanings.get(seg_name, "")
+    if meaning:
+        lines.append(f"**What this segment is:** {meaning}")
+    lines.append(f"**Records:** {len(sub)}  ({len(sub)/len(segmented)*100:.0f}% of all records)")
+    lines.append(f"**Total {value_col}:** {money(vals.sum(), sym)}")
+    lines.append(f"**Average {value_col}:** {money(vals.mean(), sym)}")
+    lines.append(f"**Highest {value_col}:** {money(vals.max(), sym)}")
+    lines.append(f"**Lowest {value_col}:** {money(vals.min(), sym)}")
+    top = sub.assign(_v=vals).sort_values("_v", ascending=False).head(10)
+    top_rows = []
+    for _, r in top.iterrows():
+        label = (str(r["FullName"]) if "FullName" in sub.columns
+                 else (str(r[id_col]) if id_col in sub.columns else "record"))
+        top_rows.append({"Record": label, value_col: money(r["_v"], sym)})
+    return lines, pd.DataFrame(top_rows)
 
 
 # ============================================================
@@ -297,7 +352,7 @@ def clean_data(df, value_col, consent_cols, flag_col):
     for col in consent_cols:
         if col in df.columns:
             normalized = df[col].astype(str).str.strip().str.lower()
-            df[col] = normalized.map({"yes":"Yes","no":"No"}).fillna("Unknown")
+            df[col] = normalized.map({"yes": "Yes", "no": "No"}).fillna("Unknown")
             report.append(f"Standardized {col} to Yes / No / Unknown.")
     if value_col in df.columns:
         df[value_col] = clean_money_series(df[value_col])
@@ -356,21 +411,98 @@ def explain_player(row, cut, sym):
 
 def player_profile(df, sym):
     lines = [f"Total records: {len(df)}"]
-    for col in ["NetADT","LifetimeValue","AvgWager","OfferTotal","CoinInTotal"]:
+    for col in ["NetADT", "LifetimeValue", "AvgWager", "OfferTotal", "CoinInTotal"]:
         if col in df.columns:
-            s = pd.to_numeric(df[col],errors="coerce")
+            s = pd.to_numeric(df[col], errors="coerce")
             lines.append(f"{col}: avg {money(s.mean(),sym)}, median {money(s.median(),sym)}, max {money(s.max(),sym)}")
     if "DaysSinceLastVisit" in df.columns:
-        s = pd.to_numeric(df["DaysSinceLastVisit"],errors="coerce")
+        s = pd.to_numeric(df["DaysSinceLastVisit"], errors="coerce")
         lines.append(f"DaysSinceLastVisit: avg {s.mean():.0f}, max {s.max():.0f}")
-    for col in ["TierRank","PreferredGame"]:
+    for col in ["TierRank", "PreferredGame"]:
         if col in df.columns:
             top = df[col].value_counts().head(3)
-            lines.append(f"{col} top values: " + ", ".join(f"{i} ({v})" for i,v in top.items()))
+            lines.append(f"{col} top values: " + ", ".join(f"{i} ({v})" for i, v in top.items()))
     return "\n".join(lines)
 
+# Host worklist: suggested comp tiers scaled to player value. These are
+# ILLUSTRATIVE defaults; a real property sets them from its own reinvestment
+# policy. The cutoffs are adjustable in the UI so they can be tuned to match.
+DEFAULT_COMP_TIERS = [
+    (0,   "Free play offer"),
+    (50,  "Complimentary meal"),
+    (120, "Hotel night on us"),
+    (250, "Suite plus event invite"),
+]
+
+def comp_tier_for(value, tiers):
+    label = tiers[0][1]
+    for cutoff, name in tiers:
+        if value >= cutoff:
+            label = name
+    return label
+
+def comp_band_short(value, tiers):
+    # Short tag for the table: which band the value sits in.
+    for i, (cutoff, name) in enumerate(tiers):
+        upper = tiers[i+1][0] if i+1 < len(tiers) else None
+        if value >= cutoff and (upper is None or value < upper):
+            if upper is None:
+                return f"{name} band (above {cutoff:,.0f})"
+            return f"{name} band ({cutoff:,.0f} to {upper:,.0f})"
+    return tiers[0][1] + " band"
+
+def comp_reason_full(value, tiers, sym):
+    # Full sentence for the expander: exact value, the two cutoffs it sits between.
+    for i, (cutoff, name) in enumerate(tiers):
+        upper = tiers[i+1][0] if i+1 < len(tiers) else None
+        if value >= cutoff and (upper is None or value < upper):
+            if upper is None:
+                return (f"NetADT of {money(value,sym)} is above the top cutoff of "
+                        f"{money(cutoff,sym)}, so the {name.lower()} tier fits, the highest offer "
+                        "for the most valuable players.")
+            return (f"NetADT of {money(value,sym)} falls between {money(cutoff,sym)} and "
+                    f"{money(upper,sym)}, so a {name.lower()} matches their value without "
+                    "over-investing on a lower-value player or under-rewarding a higher one.")
+    return f"NetADT of {money(value,sym)} sits in the entry tier."
+
+def host_reason(row, cut, sym):
+    v = row.get("NetADT", 0); r = row.get("DaysSinceLastVisit", None)
+    seg = row.get("Segment", "")
+    if seg == "At Risk High Value":
+        return (f"High value ({money(v,sym)}/day) and not seen in {int(r)} days. "
+                "Prime win-back call, reach out before they are gone.")
+    if seg == "VIP High Value":
+        return (f"Top-tier value ({money(v,sym)}/day) and active. "
+                "Strengthen the relationship and keep them loyal.")
+    return f"Value {money(v,sym)}/day. Worth a personal touch."
+
+def build_host_worklist(segmented, sym, tiers):
+    # Only high-value players belong on a host's list. At Risk first (most urgent),
+    # then VIP, each ranked by value.
+    hv = segmented[segmented["Segment"].isin(["At Risk High Value", "VIP High Value"])].copy()
+    if hv.empty:
+        return None
+    hv["NetADT"] = pd.to_numeric(hv["NetADT"], errors="coerce")
+    priority = {"At Risk High Value": 0, "VIP High Value": 1}
+    hv["_prio"] = hv["Segment"].map(priority).fillna(2)
+    hv = hv.sort_values(["_prio", "NetADT"], ascending=[True, False])
+    rows = []
+    for _, r in hv.iterrows():
+        name = (f"{r['FullName']}" if "FullName" in hv.columns else str(r.get("PlayerID", "player")))
+        rows.append({
+            "Player": name,
+            "Segment": r["Segment"],
+            "NetADT": money(r.get("NetADT", 0), sym),
+            "Days since visit": int(r["DaysSinceLastVisit"]) if pd.notna(r.get("DaysSinceLastVisit")) else "n/a",
+            "Suggested comp": comp_tier_for(r.get("NetADT", 0), tiers),
+            "Why this comp": comp_band_short(r.get("NetADT", 0), tiers),
+            "Why reach out": host_reason(r, None, sym),
+        })
+    return pd.DataFrame(rows)
+
+
 def player_pareto(df, sym):
-    cols = [c for c in ["OfferSlots","OfferTables","OfferFood","OfferHotel"] if c in df.columns]
+    cols = [c for c in ["OfferSlots", "OfferTables", "OfferFood", "OfferHotel"] if c in df.columns]
     if not cols: return None
     totals = {}
     for c in cols:
@@ -380,7 +512,7 @@ def player_pareto(df, sym):
     if not totals: return None
     ser = pd.Series(totals).sort_values(ascending=False)
     p = pd.DataFrame({"Category": ser.index, "RawTotal": ser.values.round(2)})
-    p["Cumulative %"] = (p["RawTotal"].cumsum()/p["RawTotal"].sum()*100).round(1)
+    p["Cumulative %"] = (p["RawTotal"].cumsum() / p["RawTotal"].sum() * 100).round(1)
     return p
 
 
@@ -412,46 +544,46 @@ def segment_companies(df):
     cut = df["AnnualRevenue"].quantile(0.75)
     if "Debt" in df.columns and "Equity" in df.columns:
         d = clean_money_series(df["Debt"]); e = clean_money_series(df["Equity"]).replace(0, pd.NA)
-        df["DebtToEquity"] = (d/e).round(2)
+        df["DebtToEquity"] = (d / e).round(2)
     def assign(row):
-        rev=row.get("AnnualRevenue",0); dte=row.get("DebtToEquity",0); cold=row.get("MonthsSinceContact",0)
+        rev = row.get("AnnualRevenue", 0); dte = row.get("DebtToEquity", 0); cold = row.get("MonthsSinceContact", 0)
         if pd.isna(rev): return "Needs Review"
-        if dte is not None and not pd.isna(dte) and dte>1.5:
-            return "High Value At Risk" if rev>=cut else "Leveraged Watchlist"
-        if rev>=cut: return "Strategic Account"
-        if cold is not None and cold>12: return "Dormant"
+        if dte is not None and not pd.isna(dte) and dte > 1.5:
+            return "High Value At Risk" if rev >= cut else "Leveraged Watchlist"
+        if rev >= cut: return "Strategic Account"
+        if cold is not None and cold > 12: return "Dormant"
         return "Standard"
-    df["Segment"]=df.apply(assign,axis=1)
+    df["Segment"] = df.apply(assign, axis=1)
     return df, cut
 
 def explain_company(row, cut, sym):
-    rev=row.get("AnnualRevenue",0); dte=row.get("DebtToEquity",None); cold=row.get("MonthsSinceContact",None); parts=[]
+    rev = row.get("AnnualRevenue", 0); dte = row.get("DebtToEquity", None); cold = row.get("MonthsSinceContact", None); parts = []
     if pd.isna(rev): return "This account has no revenue figure, so it was set aside for review."
-    if rev>=cut:
+    if rev >= cut:
         parts.append(f"Its revenue of {money(rev,sym)} is in the top quartile (cutoff {money(cut,sym)}), so it is a large account.")
     else:
         parts.append(f"Its revenue of {money(rev,sym)} is below the large account cutoff of {money(cut,sym)}.")
     if dte is not None and not pd.isna(dte):
         parts.append(f"Its debt to equity ratio of {dte} is {'above 1.5, which signals heavy leverage.' if dte>1.5 else 'within a healthy range.'}")
-    if cold is not None and not pd.isna(cold) and cold>12:
+    if cold is not None and not pd.isna(cold) and cold > 12:
         parts.append(f"It has not been contacted in {int(cold)} months.")
     parts.append(f"Together that places it in the {row['Segment']} segment.")
     return " ".join(parts)
 
 def company_profile(df, sym):
-    lines=[f"Total accounts: {len(df)}"]
-    for col in ["AnnualRevenue","Debt","Liabilities","Equity"]:
+    lines = [f"Total accounts: {len(df)}"]
+    for col in ["AnnualRevenue", "Debt", "Liabilities", "Equity"]:
         if col in df.columns:
-            s=clean_money_series(df[col])
+            s = clean_money_series(df[col])
             lines.append(f"{col}: avg {money(s.mean(),sym)}, median {money(s.median(),sym)}, max {money(s.max(),sym)}")
-    for col in ["DebtToEquity","CreditScore","ProductsHeld"]:
+    for col in ["DebtToEquity", "CreditScore", "ProductsHeld"]:
         if col in df.columns:
-            s=pd.to_numeric(df[col],errors="coerce")
+            s = pd.to_numeric(df[col], errors="coerce")
             lines.append(f"{col}: avg {s.mean():.1f}, median {s.median():.1f}, max {s.max():.1f}")
-    for col in ["Industry","RiskTier"]:
+    for col in ["Industry", "RiskTier"]:
         if col in df.columns:
-            top=df[col].value_counts().head(3)
-            lines.append(f"{col} top values: " + ", ".join(f"{i} ({v})" for i,v in top.items()))
+            top = df[col].value_counts().head(3)
+            lines.append(f"{col} top values: " + ", ".join(f"{i} ({v})" for i, v in top.items()))
     return "\n".join(lines)
 
 
@@ -486,7 +618,7 @@ def guess_mapping(df):
                          "lastvisit", "last_touch", "lasttouch", "lastcontact"])
     if value_guess is None:
         numeric = df.apply(clean_money_series)
-        numeric = numeric.drop(columns=[c for c in cols if any(a in lower[c] for a in ["row","index","no.","count","id"])], errors="ignore")
+        numeric = numeric.drop(columns=[c for c in cols if any(a in lower[c] for a in ["row", "index", "no.", "count", "id"])], errors="ignore")
         if not numeric.dropna(axis=1, how="all").empty:
             value_guess = numeric.std().idxmax()
     return id_guess, value_guess, recency_guess
@@ -537,8 +669,139 @@ def explain_custom(row, cut, value_col, sym):
 
 
 # ============================================================
-# Sidebar: chat AND record lookup. Rendered separately from the main flow so
-# interacting here does not re-trigger the custom-mode column-mapping block.
+# Autonomous agent (EXPERIMENTAL). The AI decides which tools to call, in what
+# order, to reach the user's goal, rather than following a fixed pipeline. Each
+# "tool" is one of the trusted functions already used elsewhere. The loop
+# validates the AI's choice before running it, so a bad pick is caught, not crashed.
+# ============================================================
+def agent_tools_for(segmented_holder):
+    # Tools return a short text result the agent can reason about. They read/write
+    # through a shared holder dict so steps build on each other.
+    def t_clean():
+        df = segmented_holder["df"]
+        cleaned, report, rate = clean_data(df, "NetADT", ["CanEmail", "CanCall"], "ZipCode")
+        segmented_holder["df"] = cleaned
+        return "Cleaned the data. " + " ".join(report)
+    def t_segment():
+        df = segmented_holder["df"]
+        seg, cut = segment_players(df)
+        segmented_holder["segmented"] = seg; segmented_holder["cut"] = cut
+        counts = seg["Segment"].value_counts()
+        return "Segmented players. Counts: " + counts.to_string().replace("\n", "; ")
+    def t_value_table():
+        seg = segmented_holder.get("segmented")
+        if seg is None: return "No segments yet. Call segment first."
+        vt = seg.groupby("Segment").agg(Records=("PlayerID", "count"),
+             TotalValue=("NetADT", "sum")).round(2).sort_values("TotalValue", ascending=False)
+        segmented_holder["value_table"] = vt
+        return "Value by segment (total NetADT): " + vt["TotalValue"].to_string().replace("\n", "; ")
+    def t_pareto():
+        seg = segmented_holder.get("segmented")
+        if seg is None: return "No segments yet. Call segment first."
+        p = player_pareto(seg, segmented_holder["sym"])
+        if p is None: return "No offer columns available for a Pareto."
+        return "Offer concentration: " + p[["Category", "Cumulative %"]].to_string(index=False).replace("\n", "; ")
+    return {
+        "clean_data": ("Clean and standardize the raw data. Call this first.", t_clean),
+        "segment_players": ("Group players into value/recency segments. Call after cleaning.", t_segment),
+        "value_by_segment": ("Compute total and average value per segment. Call after segmenting.", t_value_table),
+        "pareto": ("Find how concentrated offer spend is across categories.", t_pareto),
+    }
+
+def agent_decide(goal, tools, history, sym):
+    # Ask the AI for its next action as strict JSON. Returns a dict or None.
+    tool_list = "\n".join(f"- {name}: {desc}" for name, (desc, _) in tools.items())
+    sofar = "\n".join(history) if history else "Nothing done yet."
+    prompt = (
+        f"You are an autonomous data analysis agent. Money is in {sym}. "
+        f"Your goal: \"{goal}\".\n\n"
+        f"Tools you can call:\n{tool_list}\n\n"
+        f"Steps taken so far and their results:\n{sofar}\n\n"
+        "Decide the single next action. Reply with ONLY a JSON object, no other text, "
+        "in this exact shape:\n"
+        '{\"thought\": \"one short sentence on why\", \"action\": \"tool_name or FINISH\", '
+        '\"final\": \"if action is FINISH, your final answer here, else empty\"}\n'
+        "Use FINISH once you have enough to answer the goal. Do not repeat a tool that already succeeded."
+    )
+    text, provider = ai_generate(prompt)
+    # Pull the JSON out even if the model wraps it in prose or code fences.
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if not m:
+        return None, provider
+    try:
+        return json.loads(m.group(0)), provider
+    except Exception:
+        return None, provider
+
+def render_agent_mode(df, sym, cur_name, goal):
+    st.markdown("<div class='ai-banner'>Experimental autonomous mode. The AI chooses its own "
+                "steps to reach your goal. It may be slower and occasionally take an odd path. "
+                "This is the agentic core of the project.</div>", unsafe_allow_html=True)
+
+    step_mode = st.radio("How should the agent run?",
+        ["Hands-off (run start to finish)", "Step-by-step (approve each action)"], horizontal=True)
+
+    holder = {"df": df.copy(), "sym": sym}
+    tools = agent_tools_for(holder)
+    MAX_STEPS = 6
+
+    if st.button("Start the agent", type="primary"):
+        st.session_state.agent_history = []
+        st.session_state.agent_done = False
+        st.session_state.agent_final = ""
+        st.session_state.agent_holder = holder
+        st.session_state.agent_running = True
+
+    if st.session_state.get("agent_running"):
+        history = st.session_state.get("agent_history", [])
+        holder = st.session_state.get("agent_holder", holder)
+        tools = agent_tools_for(holder)
+
+        if not st.session_state.get("agent_done") and len(history) < MAX_STEPS:
+            with st.spinner("Agent is deciding the next step..."):
+                decision, provider = agent_decide(goal, tools, history, sym)
+            if decision is None:
+                st.error("The agent could not produce a valid decision (the AI may be rate-limited). "
+                         "Try again, or check the backup provider.")
+            else:
+                thought = decision.get("thought", "")
+                action = decision.get("action", "")
+                st.markdown(f"**Agent thinking:** {thought}")
+                if action == "FINISH":
+                    st.session_state.agent_done = True
+                    st.session_state.agent_final = decision.get("final", "Done.")
+                elif action in tools:
+                    st.markdown(f"**Proposed action:** call `{action}`")
+                    go = True
+                    if step_mode.startswith("Step"):
+                        go = st.button(f"Approve and run `{action}`")
+                    if go:
+                        result = tools[action][1]()
+                        history.append(f"{action} -> {result}")
+                        st.session_state.agent_history = history
+                        st.markdown(f"**Result:** {result}")
+                        st.rerun()
+                else:
+                    history.append(f"INVALID action '{action}' ignored.")
+                    st.session_state.agent_history = history
+                    st.warning(f"The agent proposed an unknown action ('{action}'). Asking it to choose again.")
+                    st.rerun()
+
+        if st.session_state.get("agent_done"):
+            st.success("Agent finished.")
+            st.markdown("### The agent's conclusion")
+            st.markdown(st.session_state.get("agent_final", ""))
+        elif len(history) >= MAX_STEPS:
+            st.info("Reached the step limit. Here is what the agent gathered:")
+
+        if history:
+            st.markdown("### Steps the agent took")
+            for i, h in enumerate(history, 1):
+                st.markdown(f"{i}. {h}")
+
+
+# ============================================================
+# Sidebar: chat AND record lookup.
 # ============================================================
 def explain_for_mode(mode, row, cut, value_col, sym):
     if mode == "Players / Customers": return explain_player(row, cut, sym)
@@ -558,7 +821,6 @@ def render_sidebar():
         cut = st.session_state.cut; mode_run = st.session_state.mode_run
         goal = st.session_state.get("goal", "")
 
-        # ----- Chat -----
         chat_on = st.toggle("Open chat", value=False)
         if chat_on:
             if "chat_history" not in st.session_state:
@@ -569,8 +831,10 @@ def render_sidebar():
                 st.rerun()
             if question:
                 st.session_state.chat_history.append({"role": "user", "content": question})
-                answer = chat_answer(role, st.session_state.chat_context,
+                answer, provider = chat_answer(role, st.session_state.chat_context,
                                      st.session_state.chat_history, sym, cur_name)
+                if provider == "Gemini (backup)":
+                    answer = "_(answered by backup AI)_\n\n" + answer
                 st.session_state.chat_history.append({"role": "assistant", "content": answer})
             st.markdown("<div id='chat-scroll'>", unsafe_allow_html=True)
             for msg in st.session_state.chat_history:
@@ -581,7 +845,6 @@ def render_sidebar():
             st.caption("Flip this on to ask in plain English about your results.")
 
         st.markdown("---")
-        # ----- Record lookup (lives here so it never disturbs the main page) -----
         if mode_run == "Custom / Any File":
             st.markdown("### Look up a record <span class='beta-badge'>BETA</span>", unsafe_allow_html=True)
         else:
@@ -608,8 +871,12 @@ def render_sidebar():
         detail_text = "\n".join(f"{c}: {chosen[c]}" for c in segmented.columns)
         if st.button("Get recommendation for this record"):
             with st.spinner("Thinking..."):
-                rec = get_record_recommendation(role, name_label, detail_text,
+                rec, provider = get_record_recommendation(role, name_label, detail_text,
                         goal or "improve outcomes", sym, cur_name)
+            if provider == "Gemini (backup)":
+                st.markdown("<div class='ai-banner'>Primary AI was busy, answered by backup (Gemini).</div>", unsafe_allow_html=True)
+            elif provider == "none":
+                st.markdown("<div class='ai-banner'>AI unavailable right now. The analytics above are still accurate.</div>", unsafe_allow_html=True)
             st.markdown("**Recommended action:**")
             st.markdown(rec)
 
@@ -617,31 +884,84 @@ def render_sidebar():
 # ================= MAIN UI =================
 
 st.markdown("**Mode**")
-mode = st.radio("Mode", ["Players / Customers", "Companies / Accounts", "Custom / Any File"],
+mode = st.radio("Mode", ["Players / Customers", "Companies / Accounts", "Custom / Any File",
+                         "Autonomous Agent"],
                 horizontal=True, label_visibility="collapsed")
 
-st.caption("Players / Customers: individual people like casino players or retail customers.  •  "
-           "Companies / Accounts: business accounts with revenue, debt, equity.  •  "
-           "Custom / Any File: upload any spreadsheet and map your own columns.")
+st.caption("Players / Customers: individual people like casino players or retail customers.  \u2022  "
+           "Companies / Accounts: business accounts with revenue, debt, equity.  \u2022  "
+           "Custom / Any File: upload any spreadsheet and map your own columns.  \u2022  "
+           "Autonomous Agent: experimental, the AI plans its own analysis steps.")
 
 if mode == "Players / Customers":
-    cfg = {"title":"Player Segmentation Agent","sample":"sample_players.csv","template":"player_template.csv",
-           "id_col":"PlayerID","value_col":"NetADT","consent":["CanEmail","CanCall"],"flag":"ZipCode",
-           "role":"a casino marketing analyst",
-           "placeholder":"Example: Find high value players who are slipping away so I can win them back",
-           "default_goal":"improve overall player value and retention"}
+    cfg = {"title": "Player Segmentation Agent", "sample": "sample_players.csv", "template": "player_template.csv",
+           "id_col": "PlayerID", "value_col": "NetADT", "consent": ["CanEmail", "CanCall"], "flag": "ZipCode",
+           "role": "a casino marketing analyst",
+           "placeholder": "Example: Find high value players who are slipping away so I can win them back",
+           "default_goal": "improve overall player value and retention"}
 elif mode == "Companies / Accounts":
-    cfg = {"title":"Account Segmentation Agent","sample":"sample_companies.csv","template":None,
-           "id_col":"AccountID","value_col":"AnnualRevenue","consent":[],"flag":"Industry",
-           "role":"a commercial banking portfolio analyst",
-           "placeholder":"Example: Find large accounts that are over leveraged and need a check in",
-           "default_goal":"grow the portfolio while managing risk"}
+    cfg = {"title": "Account Segmentation Agent", "sample": "sample_companies.csv", "template": "company_template.csv",
+           "id_col": "AccountID", "value_col": "AnnualRevenue", "consent": [], "flag": "Industry",
+           "role": "a commercial banking portfolio analyst",
+           "placeholder": "Example: Find large accounts that are over leveraged and need a check in",
+           "default_goal": "grow the portfolio while managing risk"}
 else:
-    cfg = {"title":"Custom Segmentation Agent","sample":None,"template":None,
-           "id_col":None,"value_col":None,"consent":[],"flag":None,
-           "role":"a data analyst",
-           "placeholder":"Example: Find my highest value records that have gone quiet",
-           "default_goal":"find the most valuable records and what to do about them"}
+    cfg = {"title": "Custom Segmentation Agent", "sample": None, "template": None,
+           "id_col": None, "value_col": None, "consent": [], "flag": None,
+           "role": "a data analyst",
+           "placeholder": "Example: Find my highest value records that have gone quiet",
+           "default_goal": "find the most valuable records and what to do about them"}
+
+if mode == "Autonomous Agent":
+    cfg = {"title": "Autonomous Agent", "sample": "sample_players.csv", "template": None,
+           "id_col": "PlayerID", "value_col": "NetADT", "consent": ["CanEmail", "CanCall"], "flag": "ZipCode",
+           "role": "an autonomous data analysis agent",
+           "placeholder": "Example: Find which players are slipping away and worth winning back",
+           "default_goal": "find the most valuable players at risk and what to do"}
+
+if mode == "Autonomous Agent":
+    st.markdown(f"<h1 style='display:inline'>{cfg['title']}</h1>"
+                "<span class='beta-badge'>EXPERIMENTAL</span>", unsafe_allow_html=True)
+    st.caption("Upload player data or load the demo, give the agent a goal, and watch it plan its own analysis.")
+
+    currency = st.selectbox("Currency for money figures", ["USD $", "EUR \u20ac", "GBP \u00a3", "CAD $", "AUD $"], index=0)
+    cur_name = currency.split()[0]; sym = currency.split()[-1]
+
+    st.markdown("<div class='goal-label'>What should the agent figure out?</div>", unsafe_allow_html=True)
+    agent_goal = st.text_input("Agent goal", placeholder=cfg["placeholder"], label_visibility="collapsed")
+
+    a1, a2 = st.columns(2)
+    a_demo = a1.button("Load Prerendered Demo Data")
+    if cfg["sample"] and os.path.exists(cfg["sample"]):
+        with open(cfg["sample"], "rb") as f:
+            a2.download_button("Download Sample CSV", f, cfg["sample"], "text/csv")
+    a_uploaded = st.file_uploader("Or upload player data (CSV or Excel)", type=["csv", "xlsx"], key="agent_upload")
+
+    if a_uploaded is not None:
+        st.session_state.agent_df = pd.read_csv(a_uploaded) if a_uploaded.name.endswith(".csv") else pd.read_excel(a_uploaded)
+    elif a_demo and cfg["sample"] and os.path.exists(cfg["sample"]):
+        st.session_state.agent_df = pd.read_csv(cfg["sample"])
+        st.success(f"Demo data loaded from {cfg['sample']}.")
+
+    agent_df = st.session_state.get("agent_df")
+    if agent_df is None:
+        st.info("Load the demo or upload player data to begin.")
+    else:
+        with st.expander("Preview the data"):
+            st.dataframe(agent_df.head(10), width='stretch')
+        divider()
+        render_agent_mode(agent_df, sym, cur_name, agent_goal.strip() or cfg["default_goal"])
+
+    render_sidebar()
+    st.markdown(
+        "<div id='bc-footer'>"
+        "Built by <a href='https://briancabrera.io' target='_blank'>Brian Cabrera</a>"
+        "<span class='sep'>|</span><a href='https://www.linkedin.com/in/briandacellcabrera/' target='_blank'>LinkedIn</a>"
+        "<span class='sep'>|</span><a href='https://github.com/BrianDCab' target='_blank'>GitHub</a>"
+        "<span class='sep'>|</span>Powered by AI</div>",
+        unsafe_allow_html=True,
+    )
+    st.stop()
 
 if mode == "Custom / Any File":
     st.markdown(f"<h1 style='display:inline'>{cfg['title']}</h1>"
@@ -652,9 +972,9 @@ st.caption("Upload data, or load the demo. Get clean segments, clear visuals, an
 
 st.subheader("1. Settings")
 check_mode = st.radio("How carefully should the agent check with you?",
-    ["Smart gates (pause only when something looks off)","Pause at every stage","Run straight through (no pauses)"])
+    ["Smart gates (pause only when something looks off)", "Pause at every stage", "Run straight through (no pauses)"])
 
-currency = st.selectbox("Currency for money figures", ["USD $", "EUR €", "GBP £", "CAD $", "AUD $"], index=0)
+currency = st.selectbox("Currency for money figures", ["USD $", "EUR \u20ac", "GBP \u00a3", "CAD $", "AUD $"], index=0)
 cur_name = currency.split()[0]; sym = currency.split()[-1]
 
 st.markdown("<div class='goal-label'>What are you looking to do?</div>", unsafe_allow_html=True)
@@ -678,7 +998,7 @@ else:
         with open(cfg["template"], "rb") as f:
             c3.download_button("Download Blank Template", f, cfg["template"], "text/csv")
 
-uploaded = st.file_uploader("Upload your own (CSV or Excel)", type=["csv","xlsx"])
+uploaded = st.file_uploader("Upload your own (CSV or Excel)", type=["csv", "xlsx"])
 
 if uploaded is not None:
     st.session_state.df = pd.read_csv(uploaded) if uploaded.name.endswith(".csv") else pd.read_excel(uploaded)
@@ -707,19 +1027,19 @@ if mode == "Custom / Any File" and df is not None:
         st.markdown("**ID column** <span style='color:rgba(230,241,255,0.5);font-weight:400'>"
                     "the unique label for each record, like a customer number or name</span>", unsafe_allow_html=True)
         custom_id = st.selectbox("ID column", cols, index=cols.index(id_g) if id_g in cols else 0, label_visibility="collapsed")
-        st.caption(f"Example value: {sample_of(custom_id)}" + (f"  •  AI thinks: {descs.get(custom_id,'')}" if descs.get(custom_id) else ""))
+        st.caption(f"Example value: {sample_of(custom_id)}" + (f"  \u2022  AI thinks: {descs.get(custom_id,'')}" if descs.get(custom_id) else ""))
 
         st.markdown("**Value column** <span style='color:rgba(230,241,255,0.5);font-weight:400'>"
                     "the one number that says how valuable each record is</span>", unsafe_allow_html=True)
         custom_value = st.selectbox("Value column", cols, index=cols.index(val_g) if val_g in cols else 0, label_visibility="collapsed")
-        st.caption(f"Example value: {sample_of(custom_value)}" + (f"  •  AI thinks: {descs.get(custom_value,'')}" if descs.get(custom_value) else ""))
+        st.caption(f"Example value: {sample_of(custom_value)}" + (f"  \u2022  AI thinks: {descs.get(custom_value,'')}" if descs.get(custom_value) else ""))
 
         st.markdown("**Recency column (optional)** <span style='color:rgba(230,241,255,0.5);font-weight:400'>"
                     "how long since each record was last active, a date or a days/months since number</span>", unsafe_allow_html=True)
         rec_opts = [none_opt] + cols
         custom_recency = st.selectbox("Recency column", rec_opts, index=rec_opts.index(rec_g) if rec_g in rec_opts else 0, label_visibility="collapsed")
         if custom_recency != none_opt:
-            st.caption(f"Example value: {sample_of(custom_recency)}" + (f"  •  AI thinks: {descs.get(custom_recency,'')}" if descs.get(custom_recency) else ""))
+            st.caption(f"Example value: {sample_of(custom_recency)}" + (f"  \u2022  AI thinks: {descs.get(custom_recency,'')}" if descs.get(custom_recency) else ""))
         else:
             custom_recency = None
 
@@ -762,13 +1082,13 @@ else:
                 meanings = CUSTOM_MEANINGS; health = custom_health(df, custom_value)
             counts = segmented["Segment"].value_counts()
             value_table = segmented.groupby("Segment").agg(
-                Records=(cfg["id_col"],"count"),
-                TotalValue=(cfg["value_col"],"sum"),
-                AvgValue=(cfg["value_col"],"mean"),
+                Records=(cfg["id_col"], "count"),
+                TotalValue=(cfg["value_col"], "sum"),
+                AvgValue=(cfg["value_col"], "mean"),
             ).round(2).sort_values("TotalValue", ascending=False)
             with st.spinner("Generating recommendations..."):
                 goal = user_goal.strip() or cfg["default_goal"]
-                recs = get_recommendations(cfg["role"], profile, counts.to_string(),
+                recs, rec_provider = get_recommendations(cfg["role"], profile, counts.to_string(),
                                            value_table["TotalValue"].to_string(), goal, sym, cur_name)
             roster = build_roster(segmented, cfg["id_col"], cfg["value_col"])
             chat_context = (f"User goal: {goal}\n\nData profile:\n{profile}\n\n"
@@ -778,7 +1098,8 @@ else:
                             f"RECORD ROSTER (one row per record):\n{roster}")
             st.session_state.update(dict(ran=True, segmented=segmented, cut=cut, meanings=meanings,
                 pareto=pareto, health=health, counts=counts, value_table=value_table, recs=recs,
-                missing_rate=missing_rate, clean_report=clean_report, sym=sym, cur_name=cur_name, mode_run=mode,
+                rec_provider=rec_provider, missing_rate=missing_rate, clean_report=clean_report,
+                sym=sym, cur_name=cur_name, mode_run=mode,
                 chat_context=chat_context, chat_role=cfg["role"], chat_history=[], goal=goal,
                 id_col=cfg["id_col"], value_col=cfg["value_col"]))
 
@@ -788,6 +1109,7 @@ else:
         value_table = st.session_state.value_table; recs = st.session_state.recs
         sym = st.session_state.sym; cur_name = st.session_state.cur_name
         segmented = st.session_state.segmented; value_col = st.session_state.value_col
+        id_col = st.session_state.id_col
 
         divider()
         st.subheader("Data health")
@@ -816,6 +1138,60 @@ else:
         st.dataframe(display_table, width='stretch')
 
         divider()
+        st.subheader("Per-segment breakdown")
+        st.caption("Overview of every segment side by side, then pick one to dig into.")
+        overview = segment_overview_table(segmented, value_col, id_col, sym)
+        st.dataframe(overview, width='stretch', hide_index=True)
+        seg_choice = st.selectbox("Dig into a segment", overview["Segment"].tolist())
+        lines, top_df = segment_deep_dive(segmented, seg_choice, value_col, id_col, sym, meanings)
+        for ln in lines:
+            st.markdown(ln)
+        if not top_df.empty:
+            st.caption("Top records in this segment by value:")
+            st.dataframe(top_df, width='stretch', hide_index=True)
+
+        if mode == "Players / Customers":
+            divider()
+            st.markdown("<div class='head-amber'>Host Worklist</div>", unsafe_allow_html=True)
+            st.caption("Who a host should reach out to, ranked. At-risk high-value players come first. "
+                       "Suggested comps are illustrative, tune the cutoffs to match your property's reinvestment policy.")
+            tiers = list(DEFAULT_COMP_TIERS)
+            with st.expander("Adjust comp tier cutoffs (NetADT thresholds)"):
+                st.caption("Set the NetADT at which each comp tier kicks in. Defaults shown.")
+                c_meal = st.number_input("Meal tier starts at", value=50, step=10)
+                c_hotel = st.number_input("Hotel tier starts at", value=120, step=10)
+                c_suite = st.number_input("Suite + event tier starts at", value=250, step=10)
+                tiers = [(0, "Free play offer"), (c_meal, "Complimentary meal"),
+                         (c_hotel, "Hotel night on us"), (c_suite, "Suite plus event invite")]
+            worklist = build_host_worklist(segmented, sym, tiers)
+            if worklist is not None:
+                st.markdown(
+                    f"<div class='insight'>How comps are suggested: "
+                    f"<b>Free play</b> under {money(tiers[1][0],sym)}, "
+                    f"<b>meal</b> {money(tiers[1][0],sym)} to {money(tiers[2][0],sym)}, "
+                    f"<b>hotel night</b> {money(tiers[2][0],sym)} to {money(tiers[3][0],sym)}, "
+                    f"<b>suite plus event</b> above {money(tiers[3][0],sym)}. "
+                    "Higher daily value earns a larger offer.</div>",
+                    unsafe_allow_html=True)
+                st.dataframe(worklist, width='stretch', hide_index=True)
+                wl_csv = worklist.to_csv(index=False).encode("utf-8")
+                st.download_button("Download host worklist (CSV)", wl_csv, "host_worklist.csv", "text/csv")
+
+                with st.expander("Why does a specific player get their comp tier?"):
+                    pick_name = st.selectbox("Pick a player from the worklist", worklist["Player"].tolist())
+                    if "FullName" in segmented.columns:
+                        prow = segmented[segmented["FullName"] == pick_name]
+                    elif "PlayerID" in segmented.columns:
+                        prow = segmented[segmented["PlayerID"].astype(str) == pick_name]
+                    else:
+                        prow = segmented.iloc[0:0]
+                    if not prow.empty:
+                        pv = pd.to_numeric(prow.iloc[0].get("NetADT", 0), errors="coerce")
+                        st.markdown(f"**{pick_name}** — {comp_reason_full(pv if pd.notna(pv) else 0, tiers, sym)}")
+            else:
+                st.info("No high-value players found to put on a host worklist for this dataset.")
+
+        divider()
         st.markdown("<div class='head-violet'>Value distribution</div>", unsafe_allow_html=True)
         st.caption(f"Violet chart. Records grouped into equal-size value bands, in {cur_name} ({sym}). Rank based so skew does not bunch them.")
         band = value_band_chart(segmented[value_col], value_col, sym, VIOLET)
@@ -831,7 +1207,7 @@ else:
             st.altair_chart(pareto_chart(pareto, AMBER), width='stretch')
             show = pareto.copy()
             show["Total Offer Dollars"] = show["RawTotal"].map(lambda x: money(x, sym))
-            st.dataframe(show[["Category","Total Offer Dollars","Cumulative %"]], width='stretch', hide_index=True)
+            st.dataframe(show[["Category", "Total Offer Dollars", "Cumulative %"]], width='stretch', hide_index=True)
             insight(pareto_insight(pareto, sym))
 
         divider()
@@ -842,6 +1218,10 @@ else:
         divider()
         st.subheader("Recommended actions")
         st.caption("Grounded in your uploaded data and tailored to the goal you typed above.")
+        if st.session_state.get("rec_provider") == "Gemini (backup)":
+            st.markdown("<div class='ai-banner'>Primary AI was busy, these were generated by the backup (Gemini).</div>", unsafe_allow_html=True)
+        elif st.session_state.get("rec_provider") == "none":
+            st.markdown("<div class='ai-banner'>AI was unavailable, so no recommendations were generated. The analytics above are still accurate.</div>", unsafe_allow_html=True)
         st.markdown(format_recommendations(recs), unsafe_allow_html=True)
 
         divider()
