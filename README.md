@@ -1,6 +1,6 @@
 # Agentic Workflow Platform
 
-**Live Demo:** https://agentic-workflow-platform.streamlit.app  
+**Live Demo:** https://agenticworkflowplatform.streamlit.app  
 **GitHub:** https://github.com/BrianDCab/agentic-workflow-platform  
 **Portfolio:** https://briancabrera.io  
 
