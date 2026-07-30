@@ -8,8 +8,17 @@ from groq import Groq
 import google.generativeai as genai
 import streamlit as st
 
-# Load my API keys from .env so they never live in the code itself.
+# Load my API keys. Locally they come from .env; on Streamlit Cloud they come
+# from the app's Secrets. Check Secrets first, then fall back to .env.
 load_dotenv()
+
+def get_key(name):
+    try:
+        if name in st.secrets:
+            return st.secrets[name]
+    except Exception:
+        pass
+    return os.getenv(name)
 
 st.set_page_config(page_title="Segmentation Agent", page_icon="\U0001F3B2", layout="centered")
 
@@ -158,14 +167,14 @@ def format_recommendations(raw):
 # (rate limit included), report which provider answered. Returns (text, label).
 # ============================================================
 def _groq_call(prompt, system=None):
-    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    client = Groq(api_key=get_key("GROQ_API_KEY"))
     messages = ([{"role": "system", "content": system}] if system else []) + \
                [{"role": "user", "content": prompt}]
     r = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=messages)
     return r.choices[0].message.content
 
 def _gemini_call(prompt, system=None):
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+    genai.configure(api_key=get_key("GEMINI_API_KEY"))
     model = genai.GenerativeModel("gemini-1.5-flash")
     full = (system + "\n\n" + prompt) if system else prompt
     r = model.generate_content(full)
@@ -208,6 +217,7 @@ Every money figure must show the {sym} symbol. Keep it under 320 words. Do not u
     return ai_generate(prompt)
 
 
+@st.cache_data(show_spinner=False)
 def get_record_recommendation(role, name_label, detail_text, user_goal, sym, cur_name):
     prompt = f"""You are {role}. All money is in {cur_name} ({sym}). Here is one specific record:
 
@@ -234,6 +244,7 @@ def chat_answer(role, context, history, sym, cur_name):
     return ai_generate(convo, system)
 
 
+@st.cache_data(show_spinner=False)
 def describe_columns_ai(columns, sample_row):
     prompt = ("For each column, say in 4 words or fewer what it appears to be. "
               "Reply as 'column = description' lines, nothing else.\n"
@@ -442,7 +453,6 @@ def comp_tier_for(value, tiers):
     return label
 
 def comp_band_short(value, tiers):
-    # Short tag for the table: which band the value sits in.
     for i, (cutoff, name) in enumerate(tiers):
         upper = tiers[i+1][0] if i+1 < len(tiers) else None
         if value >= cutoff and (upper is None or value < upper):
@@ -452,7 +462,6 @@ def comp_band_short(value, tiers):
     return tiers[0][1] + " band"
 
 def comp_reason_full(value, tiers, sym):
-    # Full sentence for the expander: exact value, the two cutoffs it sits between.
     for i, (cutoff, name) in enumerate(tiers):
         upper = tiers[i+1][0] if i+1 < len(tiers) else None
         if value >= cutoff and (upper is None or value < upper):
@@ -468,8 +477,10 @@ def comp_reason_full(value, tiers, sym):
 def host_reason(row, cut, sym):
     v = row.get("NetADT", 0); r = row.get("DaysSinceLastVisit", None)
     seg = row.get("Segment", "")
+    days_known = r is not None and pd.notna(r)
     if seg == "At Risk High Value":
-        return (f"High value ({money(v,sym)}/day) and not seen in {int(r)} days. "
+        when = f"not seen in {int(r)} days" if days_known else "gone quiet"
+        return (f"High value ({money(v,sym)}/day) and {when}. "
                 "Prime win-back call, reach out before they are gone.")
     if seg == "VIP High Value":
         return (f"Top-tier value ({money(v,sym)}/day) and active. "
@@ -477,8 +488,6 @@ def host_reason(row, cut, sym):
     return f"Value {money(v,sym)}/day. Worth a personal touch."
 
 def build_host_worklist(segmented, sym, tiers):
-    # Only high-value players belong on a host's list. At Risk first (most urgent),
-    # then VIP, each ranked by value.
     hv = segmented[segmented["Segment"].isin(["At Risk High Value", "VIP High Value"])].copy()
     if hv.empty:
         return None
@@ -669,14 +678,9 @@ def explain_custom(row, cut, value_col, sym):
 
 
 # ============================================================
-# Autonomous agent (EXPERIMENTAL). The AI decides which tools to call, in what
-# order, to reach the user's goal, rather than following a fixed pipeline. Each
-# "tool" is one of the trusted functions already used elsewhere. The loop
-# validates the AI's choice before running it, so a bad pick is caught, not crashed.
+# Autonomous agent (EXPERIMENTAL).
 # ============================================================
 def agent_tools_for(segmented_holder):
-    # Tools return a short text result the agent can reason about. They read/write
-    # through a shared holder dict so steps build on each other.
     def t_clean():
         df = segmented_holder["df"]
         cleaned, report, rate = clean_data(df, "NetADT", ["CanEmail", "CanCall"], "ZipCode")
@@ -709,7 +713,6 @@ def agent_tools_for(segmented_holder):
     }
 
 def agent_decide(goal, tools, history, sym):
-    # Ask the AI for its next action as strict JSON. Returns a dict or None.
     tool_list = "\n".join(f"- {name}: {desc}" for name, (desc, _) in tools.items())
     sofar = "\n".join(history) if history else "Nothing done yet."
     prompt = (
@@ -719,12 +722,11 @@ def agent_decide(goal, tools, history, sym):
         f"Steps taken so far and their results:\n{sofar}\n\n"
         "Decide the single next action. Reply with ONLY a JSON object, no other text, "
         "in this exact shape:\n"
-        '{\"thought\": \"one short sentence on why\", \"action\": \"tool_name or FINISH\", '
-        '\"final\": \"if action is FINISH, your final answer here, else empty\"}\n'
+        '{"thought": "one short sentence on why", "action": "tool_name or FINISH", '
+        '"final": "if action is FINISH, your final answer here, else empty"}\n'
         "Use FINISH once you have enough to answer the goal. Do not repeat a tool that already succeeded."
     )
     text, provider = ai_generate(prompt)
-    # Pull the JSON out even if the model wraps it in prose or code fences.
     m = re.search(r"\{.*\}", text, re.DOTALL)
     if not m:
         return None, provider
@@ -741,63 +743,81 @@ def render_agent_mode(df, sym, cur_name, goal):
     step_mode = st.radio("How should the agent run?",
         ["Hands-off (run start to finish)", "Step-by-step (approve each action)"], horizontal=True)
 
-    holder = {"df": df.copy(), "sym": sym}
-    tools = agent_tools_for(holder)
     MAX_STEPS = 6
 
     if st.button("Start the agent", type="primary"):
         st.session_state.agent_history = []
         st.session_state.agent_done = False
         st.session_state.agent_final = ""
-        st.session_state.agent_holder = holder
+        st.session_state.agent_holder = {"df": df.copy(), "sym": sym}
+        st.session_state.agent_pending = None
         st.session_state.agent_running = True
+        st.rerun()
 
-    if st.session_state.get("agent_running"):
-        history = st.session_state.get("agent_history", [])
-        holder = st.session_state.get("agent_holder", holder)
-        tools = agent_tools_for(holder)
+    if not st.session_state.get("agent_running"):
+        return
 
-        if not st.session_state.get("agent_done") and len(history) < MAX_STEPS:
-            with st.spinner("Agent is deciding the next step..."):
-                decision, provider = agent_decide(goal, tools, history, sym)
-            if decision is None:
-                st.error("The agent could not produce a valid decision (the AI may be rate-limited). "
-                         "Try again, or check the backup provider.")
-            else:
-                thought = decision.get("thought", "")
-                action = decision.get("action", "")
-                st.markdown(f"**Agent thinking:** {thought}")
-                if action == "FINISH":
-                    st.session_state.agent_done = True
-                    st.session_state.agent_final = decision.get("final", "Done.")
-                elif action in tools:
-                    st.markdown(f"**Proposed action:** call `{action}`")
-                    go = True
-                    if step_mode.startswith("Step"):
-                        go = st.button(f"Approve and run `{action}`")
-                    if go:
-                        result = tools[action][1]()
-                        history.append(f"{action} -> {result}")
-                        st.session_state.agent_history = history
-                        st.markdown(f"**Result:** {result}")
-                        st.rerun()
-                else:
-                    history.append(f"INVALID action '{action}' ignored.")
-                    st.session_state.agent_history = history
-                    st.warning(f"The agent proposed an unknown action ('{action}'). Asking it to choose again.")
-                    st.rerun()
+    history = st.session_state.get("agent_history", [])
+    holder = st.session_state.get("agent_holder", {"df": df.copy(), "sym": sym})
+    tools = agent_tools_for(holder)
 
-        if st.session_state.get("agent_done"):
-            st.success("Agent finished.")
-            st.markdown("### The agent's conclusion")
-            st.markdown(st.session_state.get("agent_final", ""))
-        elif len(history) >= MAX_STEPS:
-            st.info("Reached the step limit. Here is what the agent gathered:")
+    if (not st.session_state.get("agent_done")
+            and st.session_state.get("agent_pending") is None
+            and len(history) < MAX_STEPS):
+        with st.spinner("Agent is deciding the next step..."):
+            decision, provider = agent_decide(goal, tools, history, sym)
+        if decision is None:
+            st.session_state.agent_running = False
+            st.error("The agent could not produce a valid decision (the AI may be rate-limited). "
+                     "Press Start to try again.")
+            if history:
+                st.markdown("### Steps taken before the stop")
+                for i, h in enumerate(history, 1):
+                    st.markdown(f"{i}. {h}")
+            return
+        st.session_state.agent_pending = decision
+        if provider == "Gemini (backup)":
+            st.markdown("<div class='ai-banner'>Decision made by backup AI (Gemini).</div>",
+                        unsafe_allow_html=True)
 
-        if history:
-            st.markdown("### Steps the agent took")
-            for i, h in enumerate(history, 1):
-                st.markdown(f"{i}. {h}")
+    pending = st.session_state.get("agent_pending")
+    if pending is not None and not st.session_state.get("agent_done"):
+        thought = pending.get("thought", "")
+        action = pending.get("action", "")
+        st.markdown(f"**Agent thinking:** {thought}")
+        if action == "FINISH":
+            st.session_state.agent_done = True
+            st.session_state.agent_final = pending.get("final", "Done.")
+            st.session_state.agent_pending = None
+        elif action in tools:
+            st.markdown(f"**Proposed action:** call `{action}`")
+            go = True
+            if step_mode.startswith("Step"):
+                go = st.button(f"Approve and run `{action}`")
+            if go:
+                result = tools[action][1]()
+                history.append(f"{action} -> {result}")
+                st.session_state.agent_history = history
+                st.session_state.agent_pending = None
+                st.rerun()
+        else:
+            history.append(f"INVALID action '{action}' ignored.")
+            st.session_state.agent_history = history
+            st.session_state.agent_pending = None
+            st.warning(f"The agent proposed an unknown action ('{action}'). Asking it to choose again.")
+            st.rerun()
+
+    if st.session_state.get("agent_done"):
+        st.success("Agent finished.")
+        st.markdown("### The agent's conclusion")
+        st.markdown(st.session_state.get("agent_final", ""))
+    elif len(history) >= MAX_STEPS:
+        st.info("Reached the step limit. Here is what the agent gathered:")
+
+    if history:
+        st.markdown("### Steps the agent took")
+        for i, h in enumerate(history, 1):
+            st.markdown(f"{i}. {h}")
 
 
 # ============================================================
@@ -905,19 +925,18 @@ elif mode == "Companies / Accounts":
            "role": "a commercial banking portfolio analyst",
            "placeholder": "Example: Find large accounts that are over leveraged and need a check in",
            "default_goal": "grow the portfolio while managing risk"}
+elif mode == "Autonomous Agent":
+    cfg = {"title": "Autonomous Agent", "sample": "sample_players.csv", "template": None,
+           "id_col": "PlayerID", "value_col": "NetADT", "consent": ["CanEmail", "CanCall"], "flag": "ZipCode",
+           "role": "an autonomous data analysis agent",
+           "placeholder": "Example: Find which players are slipping away and worth winning back",
+           "default_goal": "find the most valuable players at risk and what to do"}
 else:
     cfg = {"title": "Custom Segmentation Agent", "sample": None, "template": None,
            "id_col": None, "value_col": None, "consent": [], "flag": None,
            "role": "a data analyst",
            "placeholder": "Example: Find my highest value records that have gone quiet",
            "default_goal": "find the most valuable records and what to do about them"}
-
-if mode == "Autonomous Agent":
-    cfg = {"title": "Autonomous Agent", "sample": "sample_players.csv", "template": None,
-           "id_col": "PlayerID", "value_col": "NetADT", "consent": ["CanEmail", "CanCall"], "flag": "ZipCode",
-           "role": "an autonomous data analysis agent",
-           "placeholder": "Example: Find which players are slipping away and worth winning back",
-           "default_goal": "find the most valuable players at risk and what to do"}
 
 if mode == "Autonomous Agent":
     st.markdown(f"<h1 style='display:inline'>{cfg['title']}</h1>"
@@ -1187,7 +1206,7 @@ else:
                         prow = segmented.iloc[0:0]
                     if not prow.empty:
                         pv = pd.to_numeric(prow.iloc[0].get("NetADT", 0), errors="coerce")
-                        st.markdown(f"**{pick_name}** — {comp_reason_full(pv if pd.notna(pv) else 0, tiers, sym)}")
+                        st.markdown(f"**{pick_name}**: {comp_reason_full(pv if pd.notna(pv) else 0, tiers, sym)}")
             else:
                 st.info("No high-value players found to put on a host worklist for this dataset.")
 
