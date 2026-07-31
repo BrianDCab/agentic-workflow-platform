@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import time
 import pandas as pd
 import altair as alt
 from dotenv import load_dotenv
@@ -27,8 +28,18 @@ CYAN = "#22D3EE"; VIOLET = "#A78BFA"; AMBER = "#F5A623"
 # ---------- Styling ----------
 st.markdown("""
 <style>
-    .stApp { background-color: #000000; overflow-x: hidden; }
-    h1, h2, h3 { color: #FFFFFF; letter-spacing: 0.3px; font-weight: 800; }
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
+    .stApp {
+        background: radial-gradient(1200px 700px at 15% -10%, rgba(34,211,238,0.07), transparent 60%),
+                    radial-gradient(1000px 600px at 110% 15%, rgba(167,139,250,0.06), transparent 55%),
+                    #050608;
+        overflow-x: hidden;
+    }
+    html, body, .stApp, p, li, label, input, textarea, div[data-testid] {
+        font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+    }
+    h1, h2, h3 { color: #FFFFFF; letter-spacing: 0.3px; font-weight: 700;
+                 font-family: 'Space Grotesk', 'Segoe UI', sans-serif; }
     .critical { color: #FFD23F; text-shadow: 0 0 8px rgba(255,210,63,0.7); font-weight: 600; }
     .goal-label { color: #FF5C7A; font-weight: 800; font-size: 1.05rem;
                   text-shadow: 0 0 8px rgba(225,29,72,0.4); margin-bottom: 2px; }
@@ -78,6 +89,44 @@ st.markdown("""
     #bc-footer a { color:#22D3EE; text-decoration:none; font-weight:700; }
     #bc-footer a:hover { text-shadow:0 0 8px rgba(34,211,238,0.7); }
     #bc-footer .sep { color:rgba(230,241,255,0.3); margin:0 8px; }
+    [data-testid="stMetric"] {
+        background: linear-gradient(180deg, rgba(34,211,238,0.09), rgba(34,211,238,0.03));
+        border: 1px solid rgba(34,211,238,0.28); border-radius: 14px;
+        padding: 14px 16px 10px 16px; box-shadow: inset 0 0 22px rgba(34,211,238,0.08);
+    }
+    [data-testid="stMetricLabel"] { color: rgba(230,241,255,0.6); text-transform: uppercase;
+        letter-spacing: 1.6px; font-size: 0.72rem; }
+    [data-testid="stMetricValue"] { font-family: 'IBM Plex Mono', monospace; color: #E8F1F5;
+        text-shadow: 0 0 12px rgba(34,211,238,0.35); }
+    div[role="radiogroup"] > label:has(input:checked) {
+        background: rgba(34,211,238,0.18); border-color: #22D3EE; color: #FFFFFF;
+        box-shadow: 0 0 14px rgba(34,211,238,0.35);
+    }
+    [data-testid="stExpander"] {
+        border: 1px solid rgba(34,211,238,0.18); border-radius: 12px;
+        background: rgba(255,255,255,0.015);
+    }
+    [data-testid="stFileUploader"] section {
+        border: 1.5px dashed rgba(34,211,238,0.4); border-radius: 12px;
+        background: rgba(34,211,238,0.03);
+    }
+    button[kind="primary"], [data-testid="stBaseButton-primary"] {
+        background: linear-gradient(90deg, #22D3EE, #A78BFA) !important;
+        color: #04070A !important; border: none !important; font-weight: 800 !important;
+        box-shadow: 0 0 24px rgba(34,211,238,0.35) !important;
+    }
+    button[kind="primary"]:hover { filter: brightness(1.08); }
+    .step-chip { display: flex; align-items: center; gap: 10px; margin: 26px 0 4px 0; }
+    .step-num { display: inline-flex; align-items: center; justify-content: center;
+        width: 26px; height: 26px; border-radius: 8px; font-family: 'Space Grotesk', sans-serif;
+        font-weight: 700; color: #04070A; background: #22D3EE;
+        box-shadow: 0 0 12px rgba(34,211,238,0.5); font-size: 0.9rem; }
+    .step-title { color: #FFFFFF; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.25rem; }
+    .eyebrow { letter-spacing: 3px; font-size: 0.72rem; color: rgba(34,211,238,0.85);
+        font-weight: 700; margin-bottom: 2px; text-transform: uppercase; }
+    @media (prefers-reduced-motion: reduce) {
+        #bc-glow-cyan-l, #bc-glow-cyan-r, #bc-glow-ruby { animation: none; }
+    }
     .stApp > header, .block-container { position: relative; z-index: 2; }
 </style>
 <div id="bc-glow-cyan-l"></div><div id="bc-glow-cyan-r"></div><div id="bc-glow-ruby"></div>
@@ -358,6 +407,50 @@ PLAYER_MEANINGS = {
     "Needs Review": "Missing value data. Set aside for a manual look.",
 }
 
+def quarantine_rows(df, id_col):
+    # Rows that cannot be identified cannot be acted on. Pull them out with a
+    # reason instead of dropping them silently; the user can download and fix them.
+    if not id_col or id_col not in df.columns:
+        return df, None
+    work = df.copy()
+    ids = work[id_col].astype(str).str.strip()
+    reasons = pd.Series("", index=work.index)
+    missing = work[id_col].isna() | ids.isin(["", "nan", "None", "NaN"])
+    reasons[missing] = f"Missing {id_col}"
+    dupes = ids.duplicated(keep="first") & ~missing
+    reasons[dupes] = f"Duplicate {id_col} (first occurrence kept)"
+    bad = reasons != ""
+    if not bad.any():
+        return work, None
+    rejects = work[bad].copy()
+    rejects.insert(0, "QuarantineReason", reasons[bad])
+    return work[~bad].copy(), rejects
+
+
+def apply_trend(segmented, prev_df, id_col):
+    # Join the prior period on the ID and compute period over period change in NetADT.
+    # Declining means play dropped more than 15 percent; Rising means it grew that much.
+    if id_col not in prev_df.columns or "NetADT" not in prev_df.columns:
+        return segmented
+    prev = prev_df[[id_col, "NetADT"]].copy()
+    prev[id_col] = prev[id_col].astype(str).str.strip()
+    prev["NetADT_Prev"] = clean_money_series(prev["NetADT"])
+    prev = prev.drop(columns=["NetADT"]).drop_duplicates(subset=[id_col], keep="first")
+    prev = prev.rename(columns={id_col: "_join_id"})
+    out = segmented.copy()
+    out["_join_id"] = out[id_col].astype(str).str.strip()
+    out = out.merge(prev, on="_join_id", how="left")
+    cur = pd.to_numeric(out["NetADT"], errors="coerce")
+    out["TrendPct"] = ((cur - out["NetADT_Prev"]) / out["NetADT_Prev"].replace(0, pd.NA) * 100).round(1)
+    def label(p):
+        if pd.isna(p): return "No prior data"
+        if p <= -15: return "Declining"
+        if p >= 15: return "Rising"
+        return "Stable"
+    out["Trend"] = out["TrendPct"].map(label)
+    return out.drop(columns=["_join_id"])
+
+
 def clean_data(df, value_col, consent_cols, flag_col):
     df = df.copy(); report = []; issues = 0
     for col in consent_cols:
@@ -478,14 +571,18 @@ def host_reason(row, cut, sym):
     v = row.get("NetADT", 0); r = row.get("DaysSinceLastVisit", None)
     seg = row.get("Segment", "")
     days_known = r is not None and pd.notna(r)
+    extra = ""
+    tp = row.get("TrendPct")
+    if tp is not None and pd.notna(tp) and tp <= -15:
+        extra = f" Play is down {abs(tp):.0f}% versus the prior period."
     if seg == "At Risk High Value":
         when = f"not seen in {int(r)} days" if days_known else "gone quiet"
         return (f"High value ({money(v,sym)}/day) and {when}. "
-                "Prime win-back call, reach out before they are gone.")
+                "Prime win-back call, reach out before they are gone." + extra)
     if seg == "VIP High Value":
         return (f"Top-tier value ({money(v,sym)}/day) and active. "
-                "Strengthen the relationship and keep them loyal.")
-    return f"Value {money(v,sym)}/day. Worth a personal touch."
+                "Strengthen the relationship and keep them loyal." + extra)
+    return f"Value {money(v,sym)}/day. Worth a personal touch." + extra
 
 def build_host_worklist(segmented, sym, tiers):
     hv = segmented[segmented["Segment"].isin(["At Risk High Value", "VIP High Value"])].copy()
@@ -494,11 +591,16 @@ def build_host_worklist(segmented, sym, tiers):
     hv["NetADT"] = pd.to_numeric(hv["NetADT"], errors="coerce")
     priority = {"At Risk High Value": 0, "VIP High Value": 1}
     hv["_prio"] = hv["Segment"].map(priority).fillna(2)
-    hv = hv.sort_values(["_prio", "NetADT"], ascending=[True, False])
+    has_trend = "TrendPct" in hv.columns
+    if has_trend:
+        hv = hv.sort_values(["_prio", "TrendPct", "NetADT"],
+                            ascending=[True, True, False], na_position="last")
+    else:
+        hv = hv.sort_values(["_prio", "NetADT"], ascending=[True, False])
     rows = []
     for _, r in hv.iterrows():
         name = (f"{r['FullName']}" if "FullName" in hv.columns else str(r.get("PlayerID", "player")))
-        rows.append({
+        row_out = {
             "Player": name,
             "Segment": r["Segment"],
             "NetADT": money(r.get("NetADT", 0), sym),
@@ -506,7 +608,11 @@ def build_host_worklist(segmented, sym, tiers):
             "Suggested comp": comp_tier_for(r.get("NetADT", 0), tiers),
             "Why this comp": comp_band_short(r.get("NetADT", 0), tiers),
             "Why reach out": host_reason(r, None, sym),
-        })
+        }
+        if has_trend:
+            tp = r.get("TrendPct")
+            row_out["Trend"] = f"{tp:+.0f}%" if pd.notna(tp) else "n/a"
+        rows.append(row_out)
     return pd.DataFrame(rows)
 
 
@@ -760,6 +866,8 @@ def render_agent_mode(df, sym, cur_name, goal):
     history = st.session_state.get("agent_history", [])
     holder = st.session_state.get("agent_holder", {"df": df.copy(), "sym": sym})
     tools = agent_tools_for(holder)
+    st.markdown(f"<div class='insight'>Working toward your goal: \u201c{goal}\u201d</div>",
+                unsafe_allow_html=True)
 
     if (not st.session_state.get("agent_done")
             and st.session_state.get("agent_pending") is None
@@ -903,15 +1011,16 @@ def render_sidebar():
 
 # ================= MAIN UI =================
 
-st.markdown("**Mode**")
+st.markdown("<div class='eyebrow'>Mode</div>", unsafe_allow_html=True)
 mode = st.radio("Mode", ["Players / Customers", "Companies / Accounts", "Custom / Any File",
-                         "Autonomous Agent"],
+                         "Autonomous Agent", "How It Was Built"],
                 horizontal=True, label_visibility="collapsed")
 
 st.caption("Players / Customers: individual people like casino players or retail customers.  \u2022  "
            "Companies / Accounts: business accounts with revenue, debt, equity.  \u2022  "
            "Custom / Any File: upload any spreadsheet and map your own columns.  \u2022  "
-           "Autonomous Agent: experimental, the AI plans its own analysis steps.")
+           "Autonomous Agent: experimental, the AI plans its own analysis steps.  \u2022  "
+           "How It Was Built: the architecture, stack, and engineering decisions behind this tool.")
 
 if mode == "Players / Customers":
     cfg = {"title": "Player Segmentation Agent", "sample": "sample_players.csv", "template": "player_template.csv",
@@ -937,6 +1046,113 @@ else:
            "role": "a data analyst",
            "placeholder": "Example: Find my highest value records that have gone quiet",
            "default_goal": "find the most valuable records and what to do about them"}
+
+if mode == "How It Was Built":
+    st.title("How It Was Built")
+    st.caption("The architecture, stack, and engineering decisions behind this tool. "
+               "Written for anyone curious how it works under the hood.")
+
+    st.markdown("<div class='head-cyan'>What this is</div>", unsafe_allow_html=True)
+    st.markdown(
+        "An end to end data application: it ingests raw spreadsheets, validates and cleans them, "
+        "transforms records into value and recency segments, aggregates the results into "
+        "analytics, and serves plain English recommendations through a large language model layer. "
+        "It was designed around casino player development (NetADT, theoretical, host worklists) "
+        "and then generalized so the same pipeline handles bank accounts, retail customers, or any "
+        "records with value dataset.")
+
+    divider()
+    st.markdown("<div class='head-violet'>The stack</div>", unsafe_allow_html=True)
+    st.markdown(
+        "**Python** for everything. **pandas** for ingestion, cleaning, and transformation. "
+        "**DuckDB** for in-app SQL queries over the segmented output. "
+        "**Altair** for the charts. **Streamlit** for the interface and session state. "
+        "**Groq (Llama 3.3 70B)** as the primary LLM with **Google Gemini 1.5 Flash** as automatic "
+        "failover. Deployed on **Streamlit Community Cloud**, continuously redeployed from "
+        "**GitHub** on every push, with API keys held in the platform's secrets manager, never in code.")
+
+    divider()
+    st.markdown("<div class='head-amber'>The data pipeline</div>", unsafe_allow_html=True)
+    st.markdown(
+        "**1. Ingest.** Accepts CSV or Excel. In custom mode, schema detection guesses the ID, "
+        "value, and recency columns using keyword heuristics plus a statistical fallback, gets an "
+        "AI second opinion on what each column appears to be, and asks the user to confirm. "
+        "Nothing runs on an unconfirmed mapping.")
+    st.markdown(
+        "**2. Validate and clean.** Real exports are never clean, so the cleaning step assumes the "
+        "worst: money parsed out of five different formats with a regex, missing values filled "
+        "with the median (robust to skew), consent flags standardized, blanks flagged rather than "
+        "silently dropped. Rows that fail identity validation (missing or duplicate IDs) are "
+        "quarantined to a downloadable rejects file with a reason per row instead of being "
+        "dropped silently. Every action is reported back to the user in a cleaning summary.")
+    st.markdown(
+        "**3. Transform.** Records are segmented by quantile cuts on the value column crossed "
+        "with recency thresholds. Quantiles instead of fixed dollar cutoffs means the same logic "
+        "works whether the file holds casino players or nine figure corporate accounts.")
+    st.markdown(
+        "**4. Aggregate.** Per segment rollups, value concentration (Pareto with cumulative "
+        "percent), rank based distribution bands, and the host worklist with value scaled comp "
+        "tiers. When a prior period file is provided, a period over period join computes each "
+        "player's trend and flags who is declining. All computed locally in pandas, instant, "
+        "and available even when the AI is not.")
+    st.markdown(
+        "**5. Serve.** The LLM layer turns the computed numbers into recommendations tied to the "
+        "user's stated goal, answers questions in a chat grounded only in this dataset, and in "
+        "agent mode plans its own sequence of pipeline steps.")
+
+    divider()
+    st.markdown("<div class='head-cyan'>Engineering decisions worth naming</div>", unsafe_allow_html=True)
+    st.markdown(
+        "**Provider failover.** Every AI call tries Groq first and falls back to Gemini on any "
+        "failure, rate limits included. If both fail, the app degrades gracefully: the computed "
+        "analytics still render and the user is told plainly that the AI is offline, instead of "
+        "the page crashing.")
+    st.markdown(
+        "**Caching against rate limits.** The free LLM tiers meter tokens per day. Column "
+        "descriptions and per record recommendations are cached so repeated interactions cost "
+        "zero additional tokens. This constraint shaped the architecture: everything that can be "
+        "computed without the AI, is.")
+    st.markdown(
+        "**A validated agent loop.** In autonomous mode the model returns a structured JSON "
+        "decision naming its next tool. The loop extracts that JSON even when the model wraps it "
+        "in prose, validates the chosen action against the real tool list, and rejects anything "
+        "unknown instead of executing it. Autonomy with a guardrail.")
+    st.markdown(
+        "**Run observability.** Every pipeline run logs rows in and rows out per stage with "
+        "timings, visible in the app, so a shrinking row count or a slow stage is diagnosable "
+        "instead of invisible.")
+    st.markdown(
+        "**Secrets management.** Keys load from the deployment platform's secrets store in the "
+        "cloud and from a gitignored .env locally. No credential has ever been committed.")
+
+    divider()
+    st.markdown("<div class='head-violet'>Honest constraints</div>", unsafe_allow_html=True)
+    st.markdown(
+        "The comp tiers in the host worklist are illustrative and adjustable, not a property's "
+        "actual reinvestment math. The demo data is generated (seeded, reproducible) rather than "
+        "real player data, no real PII touches this app. And the free tier LLM quota means the AI "
+        "features can temporarily go quiet under heavy use while the computed analytics keep "
+        "working. Each of those was a deliberate scoping decision, and knowing where the edges "
+        "are is part of the build.")
+
+    divider()
+    st.markdown("<div class='head-amber'>Built by</div>", unsafe_allow_html=True)
+    st.markdown(
+        "Brian Cabrera, a software engineer and data professional with casino industry experience "
+        "on the database side. Designed and built end to end, from the cleaning logic to the "
+        "deployment. The source is public: "
+        "[github.com/BrianDCab/agentic-workflow-platform](https://github.com/BrianDCab/agentic-workflow-platform)")
+
+    render_sidebar()
+    st.markdown(
+        "<div id='bc-footer'>"
+        "Built by <a href='https://briancabrera.io' target='_blank'>Brian Cabrera</a>"
+        "<span class='sep'>|</span><a href='https://www.linkedin.com/in/briandacellcabrera/' target='_blank'>LinkedIn</a>"
+        "<span class='sep'>|</span><a href='https://github.com/BrianDCab' target='_blank'>GitHub</a>"
+        "<span class='sep'>|</span>Powered by AI</div>",
+        unsafe_allow_html=True,
+    )
+    st.stop()
 
 if mode == "Autonomous Agent":
     st.markdown(f"<h1 style='display:inline'>{cfg['title']}</h1>"
@@ -989,7 +1205,7 @@ else:
     st.title(cfg["title"])
 st.caption("Upload data, or load the demo. Get clean segments, clear visuals, and tailored recommendations.")
 
-st.subheader("1. Settings")
+st.markdown("<div class='step-chip'><span class='step-num'>1</span><span class='step-title'>Settings</span></div>", unsafe_allow_html=True)
 check_mode = st.radio("How carefully should the agent check with you?",
     ["Smart gates (pause only when something looks off)", "Pause at every stage", "Run straight through (no pauses)"])
 
@@ -1002,7 +1218,7 @@ st.caption("Type your goal in plain English here, like 'win back my high value p
            "This box is not a chat.")
 user_goal = st.text_input("What are you looking to do?", placeholder=cfg["placeholder"], label_visibility="collapsed")
 
-st.subheader("2. Data")
+st.markdown("<div class='step-chip'><span class='step-num'>2</span><span class='step-title'>Data</span></div>", unsafe_allow_html=True)
 demo_clicked = False
 if mode == "Custom / Any File":
     st.caption("Upload any CSV or Excel file. The tool detects your columns and asks you to confirm.")
@@ -1026,6 +1242,29 @@ elif demo_clicked and cfg["sample"] and os.path.exists(cfg["sample"]):
     st.session_state.df = pd.read_csv(cfg["sample"])
     st.session_state.ran = False
     st.success(f"Demo data loaded from {cfg['sample']}.")
+
+if mode == "Players / Customers":
+    st.caption("Optional: add last period's file to unlock trend analysis. It needs matching "
+               "PlayerID and NetADT columns; the demo previous period pairs with the demo data.")
+    p1, p2 = st.columns(2)
+    prev_demo = p1.button("Load demo previous period")
+    prev_up = p2.file_uploader("Previous period file (CSV or Excel)", type=["csv", "xlsx"],
+                               key="prev_upload")
+    if prev_up is not None:
+        st.session_state.prev_df = pd.read_csv(prev_up) if prev_up.name.endswith(".csv") else pd.read_excel(prev_up)
+        st.success("Previous period loaded. Run the agent to see trends.")
+    elif prev_demo:
+        if os.path.exists("sample_players_prev.csv"):
+            st.session_state.prev_df = pd.read_csv("sample_players_prev.csv")
+            st.success("Demo previous period loaded. Run the agent to see trends.")
+        else:
+            st.warning("sample_players_prev.csv not found. Run generate_prior_period.py once to create it.")
+    if st.session_state.get("prev_df") is not None:
+        st.caption(f"Previous period on deck: {len(st.session_state.prev_df)} rows. Trends will "
+                   "compute on the next run.")
+        if st.button("Clear previous period"):
+            st.session_state.prev_df = None
+            st.rerun()
 
 df = st.session_state.get("df")
 
@@ -1078,37 +1317,77 @@ else:
     with st.expander("Preview the data"):
         st.dataframe(df.head(10), width='stretch')
 
-    st.subheader("3. Run")
+    st.markdown("<div class='step-chip'><span class='step-num'>3</span><span class='step-title'>Run</span></div>", unsafe_allow_html=True)
     if st.button("Run the agent", type="primary"):
         if mode == "Custom / Any File" and (custom_value is None):
             st.warning("Please map a Value column in the Column mapping section above before running.")
         else:
+            run_log = []
+            rejects = None
+            rows_in = len(df)
             if mode == "Players / Customers":
-                cleaned, clean_report, missing_rate = clean_data(df, cfg["value_col"], cfg["consent"], cfg["flag"])
+                t0 = time.perf_counter()
+                kept, rejects = quarantine_rows(df, cfg["id_col"])
+                run_log.append({"Stage": "Quarantine", "Rows in": rows_in, "Rows out": len(kept),
+                                "Seconds": round(time.perf_counter() - t0, 3)})
+                t0 = time.perf_counter()
+                cleaned, clean_report, missing_rate = clean_data(kept, cfg["value_col"], cfg["consent"], cfg["flag"])
+                run_log.append({"Stage": "Clean", "Rows in": len(kept), "Rows out": len(cleaned),
+                                "Seconds": round(time.perf_counter() - t0, 3)})
+                t0 = time.perf_counter()
                 segmented, cut = segment_players(cleaned)
+                prev_df = st.session_state.get("prev_df")
+                if prev_df is not None:
+                    segmented = apply_trend(segmented, prev_df, cfg["id_col"])
+                run_log.append({"Stage": "Segment + Trend" if prev_df is not None else "Segment",
+                                "Rows in": len(cleaned), "Rows out": len(segmented),
+                                "Seconds": round(time.perf_counter() - t0, 3)})
                 profile = player_profile(segmented, sym); pareto = player_pareto(segmented, sym)
                 meanings = PLAYER_MEANINGS; health = player_health(df)
             elif mode == "Companies / Accounts":
-                cleaned, clean_report, missing_rate = clean_data(df, cfg["value_col"], cfg["consent"], cfg["flag"])
+                t0 = time.perf_counter()
+                kept, rejects = quarantine_rows(df, cfg["id_col"])
+                run_log.append({"Stage": "Quarantine", "Rows in": rows_in, "Rows out": len(kept),
+                                "Seconds": round(time.perf_counter() - t0, 3)})
+                t0 = time.perf_counter()
+                cleaned, clean_report, missing_rate = clean_data(kept, cfg["value_col"], cfg["consent"], cfg["flag"])
+                run_log.append({"Stage": "Clean", "Rows in": len(kept), "Rows out": len(cleaned),
+                                "Seconds": round(time.perf_counter() - t0, 3)})
+                t0 = time.perf_counter()
                 segmented, cut = segment_companies(cleaned)
+                run_log.append({"Stage": "Segment", "Rows in": len(cleaned), "Rows out": len(segmented),
+                                "Seconds": round(time.perf_counter() - t0, 3)})
                 profile = company_profile(segmented, sym); pareto = None
                 meanings = COMPANY_MEANINGS; health = company_health(df)
             else:
-                segmented, cut = segment_custom(df, custom_value, custom_recency, custom_approach)
+                t0 = time.perf_counter()
+                kept, rejects = quarantine_rows(df, cfg["id_col"])
+                run_log.append({"Stage": "Quarantine", "Rows in": rows_in, "Rows out": len(kept),
+                                "Seconds": round(time.perf_counter() - t0, 3)})
+                t0 = time.perf_counter()
+                segmented, cut = segment_custom(kept, custom_value, custom_recency, custom_approach)
+                run_log.append({"Stage": "Clean + Segment", "Rows in": len(kept), "Rows out": len(segmented),
+                                "Seconds": round(time.perf_counter() - t0, 3)})
                 clean_report = [f"Cleaned the {custom_value} column into numbers, stripping symbols and commas."]
-                missing_rate = clean_money_series(df[custom_value]).isna().mean()
+                missing_rate = clean_money_series(kept[custom_value]).isna().mean()
                 profile = custom_profile(segmented, custom_value, sym); pareto = None
                 meanings = CUSTOM_MEANINGS; health = custom_health(df, custom_value)
+            t0 = time.perf_counter()
             counts = segmented["Segment"].value_counts()
             value_table = segmented.groupby("Segment").agg(
                 Records=(cfg["id_col"], "count"),
                 TotalValue=(cfg["value_col"], "sum"),
                 AvgValue=(cfg["value_col"], "mean"),
             ).round(2).sort_values("TotalValue", ascending=False)
+            run_log.append({"Stage": "Aggregate", "Rows in": len(segmented), "Rows out": len(segmented),
+                            "Seconds": round(time.perf_counter() - t0, 3)})
             with st.spinner("Generating recommendations..."):
                 goal = user_goal.strip() or cfg["default_goal"]
+                t0 = time.perf_counter()
                 recs, rec_provider = get_recommendations(cfg["role"], profile, counts.to_string(),
                                            value_table["TotalValue"].to_string(), goal, sym, cur_name)
+                run_log.append({"Stage": f"AI recommendations ({rec_provider})", "Rows in": "-",
+                                "Rows out": "-", "Seconds": round(time.perf_counter() - t0, 3)})
             roster = build_roster(segmented, cfg["id_col"], cfg["value_col"])
             chat_context = (f"User goal: {goal}\n\nData profile:\n{profile}\n\n"
                             f"Segment headcounts:\n{counts.to_string()}\n\n"
@@ -1118,6 +1397,7 @@ else:
             st.session_state.update(dict(ran=True, segmented=segmented, cut=cut, meanings=meanings,
                 pareto=pareto, health=health, counts=counts, value_table=value_table, recs=recs,
                 rec_provider=rec_provider, missing_rate=missing_rate, clean_report=clean_report,
+                rejects=rejects, run_log=run_log,
                 sym=sym, cur_name=cur_name, mode_run=mode,
                 chat_context=chat_context, chat_role=cfg["role"], chat_history=[], goal=goal,
                 id_col=cfg["id_col"], value_col=cfg["value_col"]))
@@ -1131,6 +1411,15 @@ else:
         id_col = st.session_state.id_col
 
         divider()
+        m1, m2, m3, m4 = st.columns(4)
+        _total_val = clean_money_series(segmented[value_col]).sum()
+        _avg_val = clean_money_series(segmented[value_col]).mean()
+        m1.metric("Records", f"{len(segmented):,}")
+        m2.metric("Total value", money(_total_val, sym))
+        m3.metric("Avg value", money(_avg_val, sym))
+        m4.metric("Segments", f"{segmented['Segment'].nunique()}")
+
+        divider()
         st.subheader("Data health")
         st.caption("A quick read on the file before any analysis.")
         for line in health: st.write("- " + line)
@@ -1141,6 +1430,30 @@ else:
         if st.session_state.missing_rate > 0.10:
             st.markdown(f"<span class='critical'>About {st.session_state.missing_rate*100:.0f}% of the value column "
                         "could not be read as numbers. Check you mapped the right column.</span>", unsafe_allow_html=True)
+
+        divider()
+        st.subheader("Data quality")
+        _rej = st.session_state.get("rejects")
+        _rej_n = 0 if _rej is None else len(_rej)
+        q1, q2, q3 = st.columns(3)
+        q1.metric("Rows received", f"{len(segmented) + _rej_n:,}")
+        q2.metric("Rows kept", f"{len(segmented):,}")
+        q3.metric("Rows quarantined", f"{_rej_n:,}")
+        if _rej_n:
+            st.caption("Quarantined rows failed identity validation and were excluded from the "
+                       "analysis, each with a reason. Download, fix, and re-upload.")
+            st.dataframe(_rej.head(20).astype(str), width='stretch', hide_index=True)
+            st.download_button("Download quarantined rows (CSV)",
+                               _rej.to_csv(index=False).encode("utf-8"),
+                               "quarantined_rows.csv", "text/csv")
+        else:
+            st.caption("No rows were quarantined. Every record passed identity validation.")
+        with st.expander("Pipeline run log (rows in and out per stage, with timings)"):
+            _log = st.session_state.get("run_log", [])
+            if _log:
+                st.dataframe(pd.DataFrame(_log).astype(str), width='stretch', hide_index=True)
+            else:
+                st.caption("No run log for this session yet.")
 
         divider()
         st.markdown("<div class='head-cyan'>Segments</div>", unsafe_allow_html=True)
@@ -1168,6 +1481,33 @@ else:
         if not top_df.empty:
             st.caption("Top records in this segment by value:")
             st.dataframe(top_df, width='stretch', hide_index=True)
+
+        if mode == "Players / Customers" and "Trend" in segmented.columns:
+            divider()
+            st.markdown("<div class='head-violet'>Trends vs prior period</div>", unsafe_allow_html=True)
+            st.caption("Compared against the previous period file you loaded. Declining means play "
+                       "dropped more than 15%; Rising means it grew that much.")
+            _tc = segmented["Trend"].value_counts()
+            r1, r2, r3 = st.columns(3)
+            r1.metric("Rising", int(_tc.get("Rising", 0)))
+            r2.metric("Stable", int(_tc.get("Stable", 0)))
+            r3.metric("Declining", int(_tc.get("Declining", 0)))
+            _dec = segmented[segmented["Trend"] == "Declining"].copy()
+            if not _dec.empty:
+                _dec["TrendPct"] = pd.to_numeric(_dec["TrendPct"], errors="coerce")
+                _top_dec = _dec.sort_values("TrendPct").head(10)
+                _tbl_cols = [c for c in ["FullName", "PlayerID", "Segment"] if c in _top_dec.columns]
+                _tbl = _top_dec[_tbl_cols].copy()
+                _tbl["Prior NetADT"] = _top_dec["NetADT_Prev"].map(lambda x: money(x, sym))
+                _tbl["Current NetADT"] = pd.to_numeric(_top_dec["NetADT"], errors="coerce").map(lambda x: money(x, sym))
+                _tbl["Change"] = _top_dec["TrendPct"].map(lambda x: f"{x:+.0f}%")
+                st.caption("Biggest declines, the players to reach first:")
+                st.dataframe(_tbl.astype(str), width='stretch', hide_index=True)
+                insight(f"{len(_dec)} players are declining versus the prior period. Declining "
+                        "high-value players are the most urgent win-back calls, they sort to the "
+                        "top of the Host Worklist below with their trend shown.")
+            else:
+                insight("No players are declining versus the prior period.")
 
         if mode == "Players / Customers":
             divider()
@@ -1236,7 +1576,11 @@ else:
 
         divider()
         st.subheader("Recommended actions")
-        st.caption("Grounded in your uploaded data and tailored to the goal you typed above.")
+        _goal_shown = st.session_state.get("goal", "")
+        if _goal_shown:
+            st.markdown(f"<div class='insight'>Based on what you asked: \u201c{_goal_shown}\u201d</div>",
+                        unsafe_allow_html=True)
+        st.caption("Grounded in your uploaded data.")
         if st.session_state.get("rec_provider") == "Gemini (backup)":
             st.markdown("<div class='ai-banner'>Primary AI was busy, these were generated by the backup (Gemini).</div>", unsafe_allow_html=True)
         elif st.session_state.get("rec_provider") == "none":
@@ -1248,6 +1592,38 @@ else:
         with st.expander("Key terms explained"):
             for k, v in GLOSSARY.items():
                 st.markdown(f"**{k}.** {v}")
+
+        divider()
+        st.markdown("<div class='head-cyan'>Query with SQL</div>", unsafe_allow_html=True)
+        st.caption("Your segmented output is loaded into an in-memory DuckDB table named records. "
+                   "Write any SQL against it and download the result.")
+        _default_sql = (f'SELECT Segment, COUNT(*) AS records, ROUND(SUM("{value_col}"), 2) AS total_value\n'
+                        'FROM records\n'
+                        'GROUP BY Segment\n'
+                        'ORDER BY total_value DESC')
+        sql_text = st.text_area("SQL query", value=_default_sql, height=140)
+        if st.button("Run query"):
+            try:
+                import duckdb
+                con = duckdb.connect()
+                con.register("records", segmented)
+                st.session_state.sql_result = con.execute(sql_text).df()
+                st.session_state.sql_error = None
+            except ImportError:
+                st.session_state.sql_result = None
+                st.session_state.sql_error = ("DuckDB is not installed. Add a duckdb line to "
+                                              "requirements.txt for the cloud deploy, or run "
+                                              "pip install duckdb locally, then restart the app.")
+            except Exception as q_err:
+                st.session_state.sql_result = None
+                st.session_state.sql_error = f"Query failed: {q_err}"
+        if st.session_state.get("sql_error"):
+            st.error(st.session_state.sql_error)
+        elif st.session_state.get("sql_result") is not None:
+            st.dataframe(st.session_state.sql_result, width='stretch', hide_index=True)
+            st.download_button("Download query result (CSV)",
+                               st.session_state.sql_result.to_csv(index=False).encode("utf-8"),
+                               "query_result.csv", "text/csv")
 
         divider()
         st.subheader("Export")
