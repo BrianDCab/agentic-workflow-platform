@@ -23,113 +23,168 @@ def get_key(name):
 
 st.set_page_config(page_title="Segmentation Agent", page_icon="\U0001F3B2", layout="centered")
 
-CYAN = "#22D3EE"; VIOLET = "#A78BFA"; AMBER = "#F5A623"
+CYAN = "#38BDF8"; VIOLET = "#A78BFA"; AMBER = "#FBBF24"
 
 # ---------- Styling ----------
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
-    .stApp {
-        background: radial-gradient(1200px 700px at 15% -10%, rgba(34,211,238,0.07), transparent 60%),
-                    radial-gradient(1000px 600px at 110% 15%, rgba(167,139,250,0.06), transparent 55%),
-                    #050608;
-        overflow-x: hidden;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+    :root {
+        --bg: #0B0D10;
+        --panel: #12151A;
+        --panel-2: #171B21;
+        --line: rgba(255,255,255,0.08);
+        --line-strong: rgba(255,255,255,0.14);
+        --text: #E6E9EE;
+        --muted: rgba(230,233,238,0.55);
+        --accent: #38BDF8;
+        --accent-dim: rgba(56,189,248,0.14);
+        --green: #34D399;
+        --amber: #FBBF24;
+        --rose: #FB7185;
+        --violet: #A78BFA;
     }
-    html, body, .stApp, p, li, label, input, textarea, div[data-testid] {
-        font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+
+    .stApp { background: var(--bg); overflow-x: hidden; }
+    html, body, .stApp, p, li, label, span, div[data-testid] {
+        font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+        color: var(--text);
     }
-    h1, h2, h3 { color: #FFFFFF; letter-spacing: 0.3px; font-weight: 700;
-                 font-family: 'Space Grotesk', 'Segoe UI', sans-serif; }
-    .critical { color: #FFD23F; text-shadow: 0 0 8px rgba(255,210,63,0.7); font-weight: 600; }
-    .goal-label { color: #FF5C7A; font-weight: 800; font-size: 1.05rem;
-                  text-shadow: 0 0 8px rgba(225,29,72,0.4); margin-bottom: 2px; }
-    .term { color: #22D3EE; font-weight: 600; cursor: help;
-            border-bottom: 1px dotted rgba(34,211,238,0.7); text-shadow: 0 0 6px rgba(34,211,238,0.4); }
-    .rec-do { color: #22D3EE; font-weight: 700; text-shadow: 0 0 6px rgba(34,211,238,0.5); }
-    .rec-why { color: #7FE7F5; font-weight: 700; }
-    .insight { background: rgba(34,211,238,0.06); border-left: 3px solid rgba(34,211,238,0.6);
-               padding: 8px 12px; border-radius: 4px; margin: 6px 0 2px 0; color:#CFEfff; }
-    .ai-banner { background: rgba(245,166,35,0.10); border:1px solid rgba(245,166,35,0.5);
-                 color:#F5C77E; padding:6px 12px; border-radius:6px; font-size:0.85rem; margin:4px 0; }
-    .head-cyan   { color:#22D3EE; font-size:1.6rem; font-weight:800; text-shadow:0 0 10px rgba(34,211,238,0.4); margin:4px 0; }
-    .head-violet { color:#A78BFA; font-size:1.6rem; font-weight:800; text-shadow:0 0 10px rgba(167,139,250,0.4); margin:4px 0; }
-    .head-amber  { color:#F5A623; font-size:1.6rem; font-weight:800; text-shadow:0 0 10px rgba(245,166,35,0.4); margin:4px 0; }
-    .beta-badge { display:inline-block; color:#FFD23F; font-weight:800; font-size:0.7rem;
-                  border:1px solid rgba(255,210,63,0.7); border-radius:6px; padding:1px 7px; margin-left:8px;
-                  text-shadow:0 0 8px rgba(255,210,63,0.9); box-shadow:0 0 10px rgba(255,210,63,0.25);
-                  vertical-align:middle; letter-spacing:1px; }
-    .divider { border:none; border-top:1px solid rgba(34,211,238,0.18); margin:30px 0 10px 0; }
+    h1 { font-weight: 700; letter-spacing: -0.02em; font-size: 1.9rem; }
+    h2 { font-weight: 650; letter-spacing: -0.01em; }
+    h3 { font-weight: 600; }
+    h1, h2, h3 { color: #FFFFFF; font-family: 'Inter', sans-serif; }
+    .stCaption, [data-testid="stCaptionContainer"] { color: var(--muted) !important; }
+
+    .block-container { padding-top: 3rem; max-width: 860px; }
+
+    /* Section headings that used colored glow now read as calm labels */
+    .head-cyan, .head-violet, .head-amber {
+        color: #FFFFFF; font-size: 1.15rem; font-weight: 650; letter-spacing: -0.01em;
+        margin: 2px 0 2px 0; text-shadow: none;
+    }
+    .eyebrow { letter-spacing: 0.12em; font-size: 0.7rem; color: var(--muted);
+        font-weight: 600; text-transform: uppercase; margin-bottom: 6px; }
+
+    /* Dividers: quieter */
+    .divider { border: none; border-top: 1px solid var(--line); margin: 22px 0 14px 0; }
+    hr { border-color: var(--line) !important; }
+
+    /* Buttons: solid, restrained, one accent. No pill glow. */
     .stButton button, .stDownloadButton button {
-        border: 1px solid rgba(34,211,238,0.5); border-radius: 9999px;
-        background: rgba(34,211,238,0.10); color: #A5F3FC; font-weight: 700;
-        box-shadow: 0 0 18px rgba(34,211,238,0.2); transition: all 0.2s ease;
+        border: 1px solid var(--line-strong); border-radius: 10px;
+        background: var(--panel-2); color: var(--text); font-weight: 550;
+        box-shadow: none; transition: background 0.15s ease, border-color 0.15s ease;
     }
     .stButton button:hover, .stDownloadButton button:hover {
-        background: #22D3EE; color: #000000; transform: translateY(-1px);
-    }
-    @media (max-width: 640px) { .stButton button, .stDownloadButton button { width: 100%; } }
-    div[role="radiogroup"] { gap: 6px; }
-    div[role="radiogroup"] > label {
-        border: 1px solid rgba(34,211,238,0.3); border-radius: 9999px;
-        padding: 6px 16px; background: rgba(34,211,238,0.05); transition: all 0.2s ease;
-    }
-    div[role="radiogroup"] > label:hover {
-        border-color: rgba(34,211,238,0.7); box-shadow: 0 0 12px rgba(34,211,238,0.25);
-    }
-    [data-testid="stSidebar"] { background-color: #060A0E; border-right: 1px solid rgba(34,211,238,0.15); }
-    #chat-scroll { max-height: 40vh; overflow-y: auto; padding-right: 4px; }
-    #bc-glow-cyan-l, #bc-glow-cyan-r, #bc-glow-ruby {
-        position: fixed; border-radius: 50%; filter: blur(90px); z-index: 0; pointer-events: none;
-    }
-    #bc-glow-cyan-l { width:300px;height:300px;background:rgba(34,211,238,0.12);bottom:-140px;left:-60px;animation:bcPulse 18s ease-in-out infinite; }
-    #bc-glow-cyan-r { width:240px;height:240px;background:rgba(34,211,238,0.10);bottom:-130px;right:-50px;animation:bcPulse 22s ease-in-out infinite; }
-    #bc-glow-ruby   { width:180px;height:180px;background:rgba(225,29,72,0.10);bottom:-120px;left:45%;animation:bcPulse 26s ease-in-out infinite; }
-    @keyframes bcPulse { 0%,100%{opacity:0.45;transform:scale(1);} 50%{opacity:0.75;transform:scale(1.08);} }
-    #bc-footer { text-align:center; color:rgba(230,241,255,0.5); font-size:0.82rem; margin-top:48px; padding:18px 0; border-top:1px solid rgba(34,211,238,0.12); }
-    #bc-footer a { color:#22D3EE; text-decoration:none; font-weight:700; }
-    #bc-footer a:hover { text-shadow:0 0 8px rgba(34,211,238,0.7); }
-    #bc-footer .sep { color:rgba(230,241,255,0.3); margin:0 8px; }
-    [data-testid="stMetric"] {
-        background: linear-gradient(180deg, rgba(34,211,238,0.09), rgba(34,211,238,0.03));
-        border: 1px solid rgba(34,211,238,0.28); border-radius: 14px;
-        padding: 14px 16px 10px 16px; box-shadow: inset 0 0 22px rgba(34,211,238,0.08);
-    }
-    [data-testid="stMetricLabel"] { color: rgba(230,241,255,0.6); text-transform: uppercase;
-        letter-spacing: 1.6px; font-size: 0.72rem; }
-    [data-testid="stMetricValue"] { font-family: 'IBM Plex Mono', monospace; color: #E8F1F5;
-        text-shadow: 0 0 12px rgba(34,211,238,0.35); }
-    div[role="radiogroup"] > label:has(input:checked) {
-        background: rgba(34,211,238,0.18); border-color: #22D3EE; color: #FFFFFF;
-        box-shadow: 0 0 14px rgba(34,211,238,0.35);
-    }
-    [data-testid="stExpander"] {
-        border: 1px solid rgba(34,211,238,0.18); border-radius: 12px;
-        background: rgba(255,255,255,0.015);
-    }
-    [data-testid="stFileUploader"] section {
-        border: 1.5px dashed rgba(34,211,238,0.4); border-radius: 12px;
-        background: rgba(34,211,238,0.03);
+        background: #1E242C; border-color: var(--accent); color: #FFFFFF; transform: none;
     }
     button[kind="primary"], [data-testid="stBaseButton-primary"] {
-        background: linear-gradient(90deg, #22D3EE, #A78BFA) !important;
-        color: #04070A !important; border: none !important; font-weight: 800 !important;
-        box-shadow: 0 0 24px rgba(34,211,238,0.35) !important;
+        background: var(--accent) !important; color: #04121A !important;
+        border: 1px solid var(--accent) !important; font-weight: 650 !important;
+        border-radius: 10px !important; box-shadow: none !important;
     }
-    button[kind="primary"]:hover { filter: brightness(1.08); }
-    .step-chip { display: flex; align-items: center; gap: 10px; margin: 26px 0 4px 0; }
+    button[kind="primary"]:hover { filter: brightness(1.06); }
+
+    /* Radio group: clean segmented control, not glowing pills */
+    div[role="radiogroup"] { gap: 6px; }
+    div[role="radiogroup"] > label {
+        border: 1px solid var(--line); border-radius: 8px; padding: 6px 14px;
+        background: var(--panel); transition: all 0.15s ease; color: var(--muted);
+    }
+    div[role="radiogroup"] > label:hover { border-color: var(--line-strong); }
+    div[role="radiogroup"] > label:has(input:checked) {
+        background: var(--accent-dim); border-color: var(--accent); color: #FFFFFF;
+        box-shadow: none;
+    }
+
+    /* Inputs */
+    input, textarea, .stTextInput input, .stTextArea textarea, [data-baseweb="select"] > div {
+        background: var(--panel) !important; border-radius: 8px !important;
+        border: 1px solid var(--line) !important; color: var(--text) !important;
+    }
+    .stTextInput input:focus, .stTextArea textarea:focus { border-color: var(--accent) !important; }
+
+    /* Metric cards: quiet panels, mono numerals */
+    [data-testid="stMetric"] {
+        background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+        padding: 14px 16px 10px 16px; box-shadow: none;
+    }
+    [data-testid="stMetricLabel"] { color: var(--muted); text-transform: uppercase;
+        letter-spacing: 0.08em; font-size: 0.68rem; }
+    [data-testid="stMetricValue"] { font-family: 'IBM Plex Mono', monospace; color: #FFFFFF;
+        text-shadow: none; font-weight: 600; }
+
+    /* Expanders & uploader: subtle panels */
+    [data-testid="stExpander"] { border: 1px solid var(--line); border-radius: 10px;
+        background: var(--panel); }
+    [data-testid="stFileUploader"] section {
+        border: 1px dashed var(--line-strong); border-radius: 10px; background: var(--panel);
+    }
+
+    /* Tabs: clean underline, single accent, no per-tab rainbow */
+    .stTabs [data-baseweb="tab-list"] { gap: 2px; border-bottom: 1px solid var(--line); }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px 8px 0 0; padding: 9px 16px; color: var(--muted);
+        font-weight: 550; font-size: 0.92rem;
+    }
+    .stTabs [data-baseweb="tab"]:hover { color: var(--text); }
+    .stTabs [aria-selected="true"] {
+        background: transparent; color: #FFFFFF !important;
+        box-shadow: inset 0 -2px 0 var(--accent);
+    }
+
+    /* Callouts: flat, role-colored left border. No heavy fills. */
+    .callout { padding: 11px 14px; border-radius: 10px; margin: 8px 0 16px 0;
+        font-size: 0.9rem; border: 1px solid var(--line); border-left: 3px solid var(--accent);
+        background: var(--panel); color: var(--text); line-height: 1.5; }
+    .callout b { font-weight: 650; color: #FFFFFF; }
+    .callout-act  { border-left-color: var(--accent); }
+    .callout-tip  { border-left-color: var(--amber); }
+    .callout-done { border-left-color: var(--green); }
+    .callout-attn { border-left-color: var(--rose); }
+
+    /* Status pills: minimal */
+    .statusbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px 0; }
+    .status-pill { font-size: 0.74rem; font-weight: 550; padding: 3px 11px; border-radius: 9999px;
+        border: 1px solid var(--line); font-family: 'IBM Plex Mono', monospace; color: var(--muted); }
+    .status-on  { background: rgba(52,211,153,0.10); border-color: rgba(52,211,153,0.4); color: #8EE7C0; }
+    .status-off { background: transparent; }
+
+    /* Insight box: quieter than before */
+    .insight { background: var(--panel); border: 1px solid var(--line);
+        border-left: 3px solid var(--accent); padding: 10px 13px; border-radius: 8px;
+        margin: 6px 0; color: var(--text); font-size: 0.9rem; }
+
+    /* Step chips: minimal numerals */
+    .step-chip { display: flex; align-items: center; gap: 10px; margin: 22px 0 6px 0; }
     .step-num { display: inline-flex; align-items: center; justify-content: center;
-        width: 26px; height: 26px; border-radius: 8px; font-family: 'Space Grotesk', sans-serif;
-        font-weight: 700; color: #04070A; background: #22D3EE;
-        box-shadow: 0 0 12px rgba(34,211,238,0.5); font-size: 0.9rem; }
-    .step-title { color: #FFFFFF; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.25rem; }
-    .eyebrow { letter-spacing: 3px; font-size: 0.72rem; color: rgba(34,211,238,0.85);
-        font-weight: 700; margin-bottom: 2px; text-transform: uppercase; }
-    @media (prefers-reduced-motion: reduce) {
-        #bc-glow-cyan-l, #bc-glow-cyan-r, #bc-glow-ruby { animation: none; }
-    }
-    .stApp > header, .block-container { position: relative; z-index: 2; }
+        width: 24px; height: 24px; border-radius: 7px; font-weight: 650; font-size: 0.82rem;
+        color: var(--accent); background: var(--accent-dim); border: 1px solid rgba(56,189,248,0.3); }
+    .step-title { color: #FFFFFF; font-weight: 600; font-size: 1.05rem; }
+
+    .goal-label { color: #FFFFFF; font-weight: 600; font-size: 1rem; margin-bottom: 2px; }
+    .critical { color: var(--amber); font-weight: 550; }
+    .term { color: var(--accent); font-weight: 550; cursor: help;
+        border-bottom: 1px dotted rgba(56,189,248,0.5); }
+    .rec-do { color: var(--accent); font-weight: 650; }
+    .rec-why { color: #7FD4EE; font-weight: 650; }
+    .beta-badge { display:inline-block; color: var(--amber); font-weight: 650; font-size: 0.62rem;
+        border: 1px solid rgba(251,191,36,0.5); border-radius: 5px; padding: 1px 7px; margin-left: 10px;
+        vertical-align: middle; letter-spacing: 0.1em; text-shadow: none; box-shadow: none; }
+
+    [data-testid="stSidebar"] { background: var(--panel); border-right: 1px solid var(--line); }
+    [data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: 10px; }
+
+    #bc-footer { text-align:center; color: var(--muted); font-size:0.8rem; margin-top:44px;
+        padding:18px 0; border-top:1px solid var(--line); }
+    #bc-footer a { color: var(--accent); text-decoration:none; font-weight:600; }
+    #bc-footer a:hover { text-decoration: underline; }
+    #bc-footer .sep { color: var(--line-strong); margin:0 8px; }
+    .stApp > header { background: transparent; }
+    .block-container { position: relative; z-index: 2; }
 </style>
-<div id="bc-glow-cyan-l"></div><div id="bc-glow-cyan-r"></div><div id="bc-glow-ruby"></div>
 """, unsafe_allow_html=True)
 
 
@@ -138,6 +193,11 @@ def divider():
 
 def insight(text):
     st.markdown(f"<div class='insight'>{text}</div>", unsafe_allow_html=True)
+
+def callout(text, role="act"):
+    # role: act (cyan, do this), tip (amber, optional/heads-up),
+    # done (green, success), attn (red-pink, needs attention)
+    st.markdown(f"<div class='callout callout-{role}'>{text}</div>", unsafe_allow_html=True)
 
 
 def money(x, sym):
@@ -199,7 +259,7 @@ def format_recommendations(raw):
         s = line.strip()
         if not s: continue
         if s.startswith("###"):
-            html.append(f"<div style='color:#FFFFFF;font-weight:800;font-size:1.05rem;margin-top:14px'>{s.lstrip('# ').strip()}</div>")
+            html.append(f"<div style='color:#FFFFFF;font-weight:600;font-size:1.02rem;margin-top:14px'>{s.lstrip('# ').strip()}</div>")
         elif s.lower().startswith("**what the data shows:**"):
             html.append(f"<div style='margin-top:4px'><b>What the data shows:</b> {s.split(':**',1)[1].strip()}</div>")
         elif s.lower().startswith("**do this:**"):
@@ -241,7 +301,8 @@ def ai_generate(prompt, system=None):
                     "analytics above are all still accurate. Try the AI again shortly."), "none"
 
 
-def get_recommendations(role, data_profile, seg_summary, val_summary, user_goal, sym, cur_name):
+def get_recommendations(role, data_profile, seg_summary, val_summary, user_goal, sym, cur_name, top_players=""):
+    roster_block = f"\n\nTOP RECORDS BY VALUE (real, from this file, name and key numbers):\n{top_players}" if top_players else ""
     prompt = f"""You are {role} reviewing one specific uploaded dataset. All money figures are in {cur_name} ({sym}).
 
 DATA PROFILE (real numbers from this file):
@@ -251,7 +312,7 @@ HEADCOUNT BY SEGMENT:
 {seg_summary}
 
 TOTAL VALUE BY SEGMENT (in {sym}):
-{val_summary}
+{val_summary}{roster_block}
 
 THE USER'S GOAL: "{user_goal}"
 
@@ -259,10 +320,10 @@ Write exactly 4 items. Put each label on its own separate line. Use this exact f
 
 ### [short title of the action]
 **What the data shows:** one sentence with a real number from above. Always put the {sym} symbol directly before every money amount, like {sym}1,234.
-**Do this:** one concrete, specific action.
+**Do this:** one concrete, specific action. If the goal asks about specific records or top players and a roster is provided above, name the actual records by name here.
 **Why it helps:** one sentence tying it to the user's goal.
 
-Every money figure must show the {sym} symbol. Keep it under 320 words. Do not use dashes as punctuation."""
+If the user's goal asks for specific top records or players and a roster is provided, one of your items must list the actual names from the roster above, not just describe them in general. Every money figure must show the {sym} symbol. Keep it under 340 words. Do not use dashes as punctuation."""
     return ai_generate(prompt)
 
 
@@ -449,6 +510,31 @@ def apply_trend(segmented, prev_df, id_col):
         return "Stable"
     out["Trend"] = out["TrendPct"].map(label)
     return out.drop(columns=["_join_id"])
+
+
+def preflight_check(df, id_col, value_col):
+    # Inspect the data before the pipeline runs and return a list of concerns.
+    # This is what the "smart gates" setting reacts to: real, computed issues,
+    # not guesses. Empty list means the data looks clean.
+    concerns = []
+    if value_col and value_col in df.columns:
+        parsed = clean_money_series(df[value_col])
+        miss = parsed.isna().mean()
+        if miss > 0.10:
+            concerns.append(f"{miss*100:.0f}% of the value column ({value_col}) could not be read "
+                            "as numbers. The wrong column may be mapped.")
+    if id_col and id_col in df.columns:
+        ids = df[id_col].astype(str).str.strip()
+        blank = df[id_col].isna() | ids.isin(["", "nan", "None", "NaN"])
+        dupe = ids.duplicated(keep="first") & ~blank
+        bad = int(blank.sum() + dupe.sum())
+        if bad:
+            concerns.append(f"{bad} row(s) have a missing or duplicate {id_col} and will be "
+                            "quarantined out of the analysis.")
+    elif id_col:
+        concerns.append(f"The expected ID column ({id_col}) is not present, so per-record lookup "
+                        "will be unavailable.")
+    return concerns
 
 
 def clean_data(df, value_col, consent_cols, flag_col):
@@ -818,19 +904,28 @@ def agent_tools_for(segmented_holder):
         "pareto": ("Find how concentrated offer spend is across categories.", t_pareto),
     }
 
-def agent_decide(goal, tools, history, sym):
-    tool_list = "\n".join(f"- {name}: {desc}" for name, (desc, _) in tools.items())
+def agent_decide(goal, tools, history, sym, used=None):
+    used = used or set()
+    # Hard enforcement: only offer tools that have not already succeeded, so the
+    # agent physically cannot loop on a repeated tool. If none remain, tell it to finish.
+    available = {n: v for n, v in tools.items() if n not in used}
+    if not available:
+        return {"thought": "All analysis tools have been run.",
+                "action": "FINISH",
+                "final": "I have run every available analysis step. Review the results above."}, "local"
+    tool_list = "\n".join(f"- {name}: {desc}" for name, (desc, _) in available.items())
     sofar = "\n".join(history) if history else "Nothing done yet."
     prompt = (
         f"You are an autonomous data analysis agent. Money is in {sym}. "
         f"Your goal: \"{goal}\".\n\n"
-        f"Tools you can call:\n{tool_list}\n\n"
+        f"Tools you can call (each may be used only once):\n{tool_list}\n\n"
         f"Steps taken so far and their results:\n{sofar}\n\n"
         "Decide the single next action. Reply with ONLY a JSON object, no other text, "
         "in this exact shape:\n"
         '{"thought": "one short sentence on why", "action": "tool_name or FINISH", '
         '"final": "if action is FINISH, your final answer here, else empty"}\n'
-        "Use FINISH once you have enough to answer the goal. Do not repeat a tool that already succeeded."
+        "The tools above are the only ones still available; already-used tools are not listed. "
+        "Use FINISH once you have enough to answer the goal."
     )
     text, provider = ai_generate(prompt)
     m = re.search(r"\{.*\}", text, re.DOTALL)
@@ -866,6 +961,12 @@ def render_agent_mode(df, sym, cur_name, goal):
     history = st.session_state.get("agent_history", [])
     holder = st.session_state.get("agent_holder", {"df": df.copy(), "sym": sym})
     tools = agent_tools_for(holder)
+    # Which tools have already succeeded, derived from history so it survives reruns.
+    used = set()
+    for h in history:
+        name = h.split(" -> ")[0].strip()
+        if name in tools:
+            used.add(name)
     st.markdown(f"<div class='insight'>Working toward your goal: \u201c{goal}\u201d</div>",
                 unsafe_allow_html=True)
 
@@ -873,7 +974,7 @@ def render_agent_mode(df, sym, cur_name, goal):
             and st.session_state.get("agent_pending") is None
             and len(history) < MAX_STEPS):
         with st.spinner("Agent is deciding the next step..."):
-            decision, provider = agent_decide(goal, tools, history, sym)
+            decision, provider = agent_decide(goal, tools, history, sym, used)
         if decision is None:
             st.session_state.agent_running = False
             st.error("The agent could not produce a valid decision (the AI may be rate-limited). "
@@ -897,6 +998,10 @@ def render_agent_mode(df, sym, cur_name, goal):
             st.session_state.agent_done = True
             st.session_state.agent_final = pending.get("final", "Done.")
             st.session_state.agent_pending = None
+        elif action in tools and action in used:
+            st.session_state.agent_pending = None
+            st.info(f"`{action}` was already run, so the agent moves on.")
+            st.rerun()
         elif action in tools:
             st.markdown(f"**Proposed action:** call `{action}`")
             go = True
@@ -936,77 +1041,71 @@ def explain_for_mode(mode, row, cut, value_col, sym):
     if mode == "Companies / Accounts": return explain_company(row, cut, sym)
     return explain_custom(row, cut, value_col, sym)
 
-def render_sidebar():
-    with st.sidebar:
-        st.markdown("### Ask about your data")
-        if not st.session_state.get("ran"):
-            st.caption("Run the agent first. Then the chat and record lookup appear here.")
-            return
+def render_chat_panel():
+    st.markdown("### Ask about your data")
+    sym = st.session_state.sym; cur_name = st.session_state.cur_name
+    role = st.session_state.chat_role
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+    question = st.chat_input("Ask about segments, records, or what to do")
+    if st.session_state.chat_history and st.button("Clear chat"):
+        st.session_state.chat_history = []
+        st.rerun()
+    if question:
+        st.session_state.chat_history.append({"role": "user", "content": question})
+        answer, provider = chat_answer(role, st.session_state.chat_context,
+                             st.session_state.chat_history, sym, cur_name)
+        if provider == "Gemini (backup)":
+            answer = "_(answered by backup AI)_\n\n" + answer
+        st.session_state.chat_history.append({"role": "assistant", "content": answer})
+    if not st.session_state.chat_history:
+        st.caption("Ask in plain English about your results, for example: which segment holds the most value?")
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
-        sym = st.session_state.sym; cur_name = st.session_state.cur_name
-        role = st.session_state.chat_role; segmented = st.session_state.segmented
-        id_col = st.session_state.id_col; value_col = st.session_state.value_col
-        cut = st.session_state.cut; mode_run = st.session_state.mode_run
-        goal = st.session_state.get("goal", "")
 
-        chat_on = st.toggle("Open chat", value=False)
-        if chat_on:
-            if "chat_history" not in st.session_state:
-                st.session_state.chat_history = []
-            question = st.chat_input("Ask about segments, records, or what to do")
-            if st.session_state.chat_history and st.button("Clear chat"):
-                st.session_state.chat_history = []
-                st.rerun()
-            if question:
-                st.session_state.chat_history.append({"role": "user", "content": question})
-                answer, provider = chat_answer(role, st.session_state.chat_context,
-                                     st.session_state.chat_history, sym, cur_name)
-                if provider == "Gemini (backup)":
-                    answer = "_(answered by backup AI)_\n\n" + answer
-                st.session_state.chat_history.append({"role": "assistant", "content": answer})
-            st.markdown("<div id='chat-scroll'>", unsafe_allow_html=True)
-            for msg in st.session_state.chat_history:
-                with st.chat_message(msg["role"]):
-                    st.markdown(msg["content"])
-            st.markdown("</div>", unsafe_allow_html=True)
-        else:
-            st.caption("Flip this on to ask in plain English about your results.")
+def render_record_lookup():
+    sym = st.session_state.sym; cur_name = st.session_state.cur_name
+    role = st.session_state.chat_role; segmented = st.session_state.segmented
+    id_col = st.session_state.id_col; value_col = st.session_state.value_col
+    cut = st.session_state.cut; mode_run = st.session_state.mode_run
+    goal = st.session_state.get("goal", "")
 
-        st.markdown("---")
-        if mode_run == "Custom / Any File":
-            st.markdown("### Look up a record <span class='beta-badge'>BETA</span>", unsafe_allow_html=True)
-        else:
-            st.markdown("### Look up a record")
-        if not (id_col and id_col in segmented.columns):
-            st.caption("This dataset has no ID column mapped, so individual lookup is off.")
-            return
-        has_names = "FullName" in segmented.columns
-        if has_names:
-            labels = [f"{r['FullName']} ({r[id_col]})" for _, r in segmented.iterrows()]
-        else:
-            labels = segmented[id_col].astype(str).tolist()
-        label_to_id = dict(zip(labels, segmented[id_col].tolist()))
-        picked = st.selectbox("Search by name or ID", labels)
-        chosen = segmented[segmented[id_col] == label_to_id[picked]].iloc[0]
-        name_label = (f"{chosen['FullName']} ({chosen[id_col]})" if has_names else str(chosen[id_col]))
+    if mode_run == "Custom / Any File":
+        st.markdown("### Look up a record <span class='beta-badge'>BETA</span>", unsafe_allow_html=True)
+    else:
+        st.markdown("### Look up a record")
+    if not (id_col and id_col in segmented.columns):
+        st.caption("This dataset has no ID column mapped, so individual lookup is off.")
+        return
+    has_names = "FullName" in segmented.columns
+    if has_names:
+        labels = [f"{r['FullName']} ({r[id_col]})" for _, r in segmented.iterrows()]
+    else:
+        labels = segmented[id_col].astype(str).tolist()
+    label_to_id = dict(zip(labels, segmented[id_col].tolist()))
+    picked = st.selectbox("Search by name or ID", labels)
+    chosen = segmented[segmented[id_col] == label_to_id[picked]].iloc[0]
+    name_label = (f"{chosen['FullName']} ({chosen[id_col]})" if has_names else str(chosen[id_col]))
 
-        st.markdown(f"**{name_label}**")
-        st.info(explain_for_mode(mode_run, chosen, cut, value_col, sym))
-        with st.expander("Full details"):
-            rows = [{"Field": c, "Value": str(chosen[c])} for c in segmented.columns]
-            st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
+    st.markdown(f"**{name_label}**")
+    st.info(explain_for_mode(mode_run, chosen, cut, value_col, sym))
+    with st.expander("Full details"):
+        rows = [{"Field": c, "Value": str(chosen[c])} for c in segmented.columns]
+        st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
 
-        detail_text = "\n".join(f"{c}: {chosen[c]}" for c in segmented.columns)
-        if st.button("Get recommendation for this record"):
-            with st.spinner("Thinking..."):
-                rec, provider = get_record_recommendation(role, name_label, detail_text,
-                        goal or "improve outcomes", sym, cur_name)
-            if provider == "Gemini (backup)":
-                st.markdown("<div class='ai-banner'>Primary AI was busy, answered by backup (Gemini).</div>", unsafe_allow_html=True)
-            elif provider == "none":
-                st.markdown("<div class='ai-banner'>AI unavailable right now. The analytics above are still accurate.</div>", unsafe_allow_html=True)
-            st.markdown("**Recommended action:**")
-            st.markdown(rec)
+    detail_text = "\n".join(f"{c}: {chosen[c]}" for c in segmented.columns)
+    if st.button("Get recommendation for this record"):
+        with st.spinner("Thinking..."):
+            rec, provider = get_record_recommendation(role, name_label, detail_text,
+                    goal or "improve outcomes", sym, cur_name)
+        if provider == "Gemini (backup)":
+            st.markdown("<div class='ai-banner'>Primary AI was busy, answered by backup (Gemini).</div>", unsafe_allow_html=True)
+        elif provider == "none":
+            st.markdown("<div class='ai-banner'>AI unavailable right now. The analytics above are still accurate.</div>", unsafe_allow_html=True)
+        st.markdown("**Recommended action:**")
+        st.markdown(rec)
 
 
 # ================= MAIN UI =================
@@ -1021,6 +1120,22 @@ st.caption("Players / Customers: individual people like casino players or retail
            "Custom / Any File: upload any spreadsheet and map your own columns.  \u2022  "
            "Autonomous Agent: experimental, the AI plans its own analysis steps.  \u2022  "
            "How It Was Built: the architecture, stack, and engineering decisions behind this tool.")
+
+# Status bar: what is loaded and what has run, so the user always knows the state.
+_has_data = st.session_state.get("df") is not None or st.session_state.get("agent_df") is not None
+_has_prev = st.session_state.get("prev_df") is not None
+_has_run = st.session_state.get("ran")
+_run_mode = st.session_state.get("mode_run", "")
+def _pill(on, on_text, off_text):
+    cls = "status-on" if on else "status-off"
+    return f"<span class='status-pill {cls}'>{on_text if on else off_text}</span>"
+st.markdown(
+    "<div class='statusbar'>"
+    + _pill(_has_data, "Data loaded", "No data yet")
+    + _pill(_has_prev, "Prior period loaded", "No prior period")
+    + _pill(_has_run, f"Last run: {_run_mode}" if _has_run else "", "Not run yet")
+    + "</div>",
+    unsafe_allow_html=True)
 
 if mode == "Players / Customers":
     cfg = {"title": "Player Segmentation Agent", "sample": "sample_players.csv", "template": "player_template.csv",
@@ -1143,7 +1258,6 @@ if mode == "How It Was Built":
         "deployment. The source is public: "
         "[github.com/BrianDCab/agentic-workflow-platform](https://github.com/BrianDCab/agentic-workflow-platform)")
 
-    render_sidebar()
     st.markdown(
         "<div id='bc-footer'>"
         "Built by <a href='https://briancabrera.io' target='_blank'>Brian Cabrera</a>"
@@ -1158,6 +1272,10 @@ if mode == "Autonomous Agent":
     st.markdown(f"<h1 style='display:inline'>{cfg['title']}</h1>"
                 "<span class='beta-badge'>EXPERIMENTAL</span>", unsafe_allow_html=True)
     st.caption("Upload player data or load the demo, give the agent a goal, and watch it plan its own analysis.")
+    callout("<b>What this mode does.</b> Instead of running a fixed pipeline, the AI decides which "
+            "analysis steps to run and in what order to reach your goal, showing its reasoning at each "
+            "step. Experimental by nature: it is slower, uses more AI, and may take an odd path. This "
+            "is the agentic core of the project.", "tip")
 
     currency = st.selectbox("Currency for money figures", ["USD $", "EUR \u20ac", "GBP \u00a3", "CAD $", "AUD $"], index=0)
     cur_name = currency.split()[0]; sym = currency.split()[-1]
@@ -1187,7 +1305,6 @@ if mode == "Autonomous Agent":
         divider()
         render_agent_mode(agent_df, sym, cur_name, agent_goal.strip() or cfg["default_goal"])
 
-    render_sidebar()
     st.markdown(
         "<div id='bc-footer'>"
         "Built by <a href='https://briancabrera.io' target='_blank'>Brian Cabrera</a>"
@@ -1205,18 +1322,35 @@ else:
     st.title(cfg["title"])
 st.caption("Upload data, or load the demo. Get clean segments, clear visuals, and tailored recommendations.")
 
-st.markdown("<div class='step-chip'><span class='step-num'>1</span><span class='step-title'>Settings</span></div>", unsafe_allow_html=True)
-check_mode = st.radio("How carefully should the agent check with you?",
-    ["Smart gates (pause only when something looks off)", "Pause at every stage", "Run straight through (no pauses)"])
+_MODE_EXPLAINERS = {
+    "Players / Customers": ("What this mode does", "Segments individual people (casino players, "
+        "retail customers) by how valuable they are and how recently they were active. Best when "
+        "each row is one person and you want to know who to keep, grow, or win back. Unlocks the "
+        "casino Host Worklist and trend analysis."),
+    "Companies / Accounts": ("What this mode does", "Segments business accounts by revenue and "
+        "financial health (debt to equity, months since contact). Best when each row is a company "
+        "and you want to spot strategic accounts and over-leveraged risks."),
+    "Custom / Any File": ("What this mode does", "Upload any spreadsheet and map your own columns. "
+        "The tool detects which column is the ID, the value, and the recency, you confirm, and it "
+        "segments. Best when your data does not fit the two built-in shapes."),
+}
+if mode in _MODE_EXPLAINERS:
+    _t, _b = _MODE_EXPLAINERS[mode]
+    callout(f"<b>{_t}.</b> {_b}", "act")
 
-currency = st.selectbox("Currency for money figures", ["USD $", "EUR \u20ac", "GBP \u00a3", "CAD $", "AUD $"], index=0)
-cur_name = currency.split()[0]; sym = currency.split()[-1]
-
-st.markdown("<div class='goal-label'>What are you looking to do?</div>", unsafe_allow_html=True)
-st.caption("Type your goal in plain English here, like 'win back my high value players who went quiet'. "
-           "This steers the recommendations. For free-form questions after running, use the chat in the left sidebar. "
-           "This box is not a chat.")
+st.markdown("<div class='step-chip'><span class='step-num'>1</span><span class='step-title'>Your goal</span></div>", unsafe_allow_html=True)
+st.caption("What are you trying to accomplish? This steers the AI's recommendations.")
 user_goal = st.text_input("What are you looking to do?", placeholder=cfg["placeholder"], label_visibility="collapsed")
+if user_goal.strip():
+    callout(f"After you run, the AI's answer to \u201c<b>{user_goal.strip()}</b>\u201d appears in the "
+            "<b>AI</b> tab under Recommended actions.", "act")
+
+with st.expander("Options (currency, agent checkpoints)"):
+    currency = st.selectbox("Currency for money figures", ["USD $", "EUR \u20ac", "GBP \u00a3", "CAD $", "AUD $"], index=0)
+    check_mode = st.radio("How carefully should the agent check with you?",
+        ["Smart gates (pause only when something looks off)", "Pause at every stage", "Run straight through (no pauses)"],
+        help="Controls how often the pipeline pauses to confirm with you. Wired into the agent checkpoints.")
+cur_name = currency.split()[0]; sym = currency.split()[-1]
 
 st.markdown("<div class='step-chip'><span class='step-num'>2</span><span class='step-title'>Data</span></div>", unsafe_allow_html=True)
 demo_clicked = False
@@ -1312,16 +1446,53 @@ if mode == "Custom / Any File" and df is not None:
     cfg["id_col"] = custom_id; cfg["value_col"] = custom_value
 
 if df is None:
-    st.info("No file loaded yet. Please upload a CSV or Excel file above (or load the demo in the named modes) to continue.")
+    callout("<b>No data loaded yet.</b> Load the demo with one click, or upload your own CSV or "
+            "Excel file above. Once data is in, a <b>Run</b> button appears and the results tabs "
+            "unlock.", "act")
 else:
     with st.expander("Preview the data"):
         st.dataframe(df.head(10), width='stretch')
 
     st.markdown("<div class='step-chip'><span class='step-num'>3</span><span class='step-title'>Run</span></div>", unsafe_allow_html=True)
-    if st.button("Run the agent", type="primary"):
+
+    # Human-in-the-loop gate. The check_mode setting decides whether Run proceeds
+    # immediately or pauses for confirmation first.
+    _gate_always = check_mode.startswith("Pause at every")
+    _gate_smart = check_mode.startswith("Smart")
+
+    _run_clicked = st.button("Run the agent", type="primary")
+    _proceed = False
+
+    if _run_clicked:
         if mode == "Custom / Any File" and (custom_value is None):
             st.warning("Please map a Value column in the Column mapping section above before running.")
         else:
+            concerns = preflight_check(df, cfg["id_col"], cfg["value_col"])
+            should_gate = _gate_always or (_gate_smart and concerns)
+            if should_gate:
+                st.session_state.gate_pending = True
+                st.session_state.gate_concerns = concerns
+            else:
+                _proceed = True
+
+    if st.session_state.get("gate_pending") and not _proceed:
+        concerns = st.session_state.get("gate_concerns", [])
+        if concerns:
+            callout("<b>Pre-flight check found things worth a look before proceeding:</b>", "attn")
+            for c in concerns:
+                st.markdown(f"- {c}")
+        else:
+            callout("<b>Pre-flight check passed.</b> No data quality issues detected. "
+                    "Confirm to run the pipeline.", "done")
+        gc1, gc2 = st.columns(2)
+        if gc1.button("Proceed with run", type="primary"):
+            _proceed = True
+            st.session_state.gate_pending = False
+        if gc2.button("Cancel"):
+            st.session_state.gate_pending = False
+            st.rerun()
+
+    if _proceed:
             run_log = []
             rejects = None
             rows_in = len(df)
@@ -1383,9 +1554,25 @@ else:
                             "Seconds": round(time.perf_counter() - t0, 3)})
             with st.spinner("Generating recommendations..."):
                 goal = user_goal.strip() or cfg["default_goal"]
+                # Build a compact top-records roster so the AI can name real people.
+                _tp_lines = []
+                try:
+                    _tp = segmented.assign(_v=clean_money_series(segmented[cfg["value_col"]])).sort_values("_v", ascending=False).head(10)
+                    for _, _r in _tp.iterrows():
+                        _nm = (str(_r["FullName"]) if "FullName" in segmented.columns
+                               else str(_r.get(cfg["id_col"], "record")))
+                        _extra = ""
+                        if "Segment" in segmented.columns:
+                            _extra += f", {_r['Segment']}"
+                        if "DaysSinceLastVisit" in segmented.columns and pd.notna(_r.get("DaysSinceLastVisit")):
+                            _extra += f", last visit {int(_r['DaysSinceLastVisit'])}d ago"
+                        _tp_lines.append(f"{_nm}: {money(_r['_v'], sym)}{_extra}")
+                except Exception:
+                    pass
+                _top_players = "\n".join(_tp_lines)
                 t0 = time.perf_counter()
                 recs, rec_provider = get_recommendations(cfg["role"], profile, counts.to_string(),
-                                           value_table["TotalValue"].to_string(), goal, sym, cur_name)
+                                           value_table["TotalValue"].to_string(), goal, sym, cur_name, _top_players)
                 run_log.append({"Stage": f"AI recommendations ({rec_provider})", "Rows in": "-",
                                 "Rows out": "-", "Seconds": round(time.perf_counter() - t0, 3)})
             roster = build_roster(segmented, cfg["id_col"], cfg["value_col"])
@@ -1397,7 +1584,7 @@ else:
             st.session_state.update(dict(ran=True, segmented=segmented, cut=cut, meanings=meanings,
                 pareto=pareto, health=health, counts=counts, value_table=value_table, recs=recs,
                 rec_provider=rec_provider, missing_rate=missing_rate, clean_report=clean_report,
-                rejects=rejects, run_log=run_log,
+                rejects=rejects, run_log=run_log, profile=profile, top_players=_top_players,
                 sym=sym, cur_name=cur_name, mode_run=mode,
                 chat_context=chat_context, chat_role=cfg["role"], chat_history=[], goal=goal,
                 id_col=cfg["id_col"], value_col=cfg["value_col"]))
@@ -1419,221 +1606,305 @@ else:
         m3.metric("Avg value", money(_avg_val, sym))
         m4.metric("Segments", f"{segmented['Segment'].nunique()}")
 
-        divider()
-        st.subheader("Data health")
-        st.caption("A quick read on the file before any analysis.")
-        for line in health: st.write("- " + line)
+        _tab_names = ["Overview", "Segments", "Host Tools", "Data Quality", "SQL", "AI"]
+        tab_overview, tab_segments, tab_host, tab_quality, tab_sql, tab_ai = st.tabs(_tab_names)
 
-        divider()
-        st.subheader("Cleaning summary")
-        for line in st.session_state.clean_report: st.write("- " + line)
-        if st.session_state.missing_rate > 0.10:
-            st.markdown(f"<span class='critical'>About {st.session_state.missing_rate*100:.0f}% of the value column "
-                        "could not be read as numbers. Check you mapped the right column.</span>", unsafe_allow_html=True)
+        # ---------------- Overview ----------------
+        with tab_overview:
+            callout("<b>Overview</b>: the big picture: segment sizes, where value concentrates, "
+                    "and your data export. Start here.", "act")
+            if mode == "Players / Customers" and "Trend" not in segmented.columns:
+                if os.path.exists("sample_players_prev.csv"):
+                    if st.button("Turn on trend analysis (load demo prior period)", key="trend_overview"):
+                        st.session_state.prev_df = pd.read_csv("sample_players_prev.csv")
+                        st.session_state.ran = False
+                        st.rerun()
+            st.markdown("<div class='head-cyan'>Segments at a glance</div>", unsafe_allow_html=True)
+            st.markdown("Hover any bar to see what that " + term("Segment") + " means.", unsafe_allow_html=True)
+            st.altair_chart(segment_chart(counts, meanings, CYAN), width='stretch')
+            insight(segments_insight(counts, value_table, sym))
 
-        divider()
-        st.subheader("Data quality")
-        _rej = st.session_state.get("rejects")
-        _rej_n = 0 if _rej is None else len(_rej)
-        q1, q2, q3 = st.columns(3)
-        q1.metric("Rows received", f"{len(segmented) + _rej_n:,}")
-        q2.metric("Rows kept", f"{len(segmented):,}")
-        q3.metric("Rows quarantined", f"{_rej_n:,}")
-        if _rej_n:
-            st.caption("Quarantined rows failed identity validation and were excluded from the "
-                       "analysis, each with a reason. Download, fix, and re-upload.")
-            st.dataframe(_rej.head(20).astype(str), width='stretch', hide_index=True)
-            st.download_button("Download quarantined rows (CSV)",
-                               _rej.to_csv(index=False).encode("utf-8"),
-                               "quarantined_rows.csv", "text/csv")
-        else:
-            st.caption("No rows were quarantined. Every record passed identity validation.")
-        with st.expander("Pipeline run log (rows in and out per stage, with timings)"):
+            divider()
+            st.markdown("<div class='head-violet'>Value distribution</div>", unsafe_allow_html=True)
+            st.caption(f"Records grouped into equal-size value bands, in {cur_name} ({sym}). Rank based so skew does not bunch them.")
+            band = value_band_chart(segmented[value_col], value_col, sym, VIOLET)
+            if band is not None: st.altair_chart(band, width='stretch')
+            insight(distribution_insight(segmented[value_col], sym))
+
+            if pareto is not None:
+                divider()
+                st.markdown("<div class='head-amber'>Spend concentration (Pareto)</div>", unsafe_allow_html=True)
+                st.markdown("Total offer dollars by category. The "
+                            + term("Pareto") + f" cumulative percent shows how concentrated the spend is. Figures in {cur_name} ({sym}).",
+                            unsafe_allow_html=True)
+                st.altair_chart(pareto_chart(pareto, AMBER), width='stretch')
+                show = pareto.copy()
+                show["Total Offer Dollars"] = show["RawTotal"].map(lambda x: money(x, sym))
+                st.dataframe(show[["Category", "Total Offer Dollars", "Cumulative %"]], width='stretch', hide_index=True)
+                insight(pareto_insight(pareto, sym))
+
+            divider()
+            st.subheader("Export")
+            e1, e2 = st.columns(2)
+            csv = segmented.to_csv(index=False).encode("utf-8")
+            e1.download_button("Download segmented data (CSV)", csv, "segmented_output.csv", "text/csv")
+            report_txt = build_summary_report(cfg["title"], health, value_table, recs).encode("utf-8")
+            e2.download_button("Download summary report (TXT)", report_txt, "segmentation_summary.txt", "text/plain")
+
+        # ---------------- Segments ----------------
+        with tab_segments:
+            callout("<b>Segments</b>: the numbers behind each group. Use the dropdown to drill "
+                    "into any segment and see its top records.", "act")
+            st.subheader("Value by segment")
+            st.caption(f"Total and average value per group, in {cur_name} ({sym}). A small group can hold most of the value.")
+            display_table = value_table.copy()
+            display_table["TotalValue"] = display_table["TotalValue"].map(lambda x: money(x, sym))
+            display_table["AvgValue"] = display_table["AvgValue"].map(lambda x: money(x, sym))
+            st.dataframe(display_table, width='stretch')
+
+            divider()
+            st.subheader("Per-segment breakdown")
+            st.caption("Overview of every segment side by side, then pick one to dig into.")
+            overview = segment_overview_table(segmented, value_col, id_col, sym)
+            st.dataframe(overview, width='stretch', hide_index=True)
+            seg_choice = st.selectbox("Dig into a segment", overview["Segment"].tolist())
+            lines, top_df = segment_deep_dive(segmented, seg_choice, value_col, id_col, sym, meanings)
+            for ln in lines:
+                st.markdown(ln)
+            if not top_df.empty:
+                st.caption("Top records in this segment by value:")
+                st.dataframe(top_df, width='stretch', hide_index=True)
+
+        # ---------------- Host Tools ----------------
+        with tab_host:
+            if mode != "Players / Customers":
+                callout("<b>Host Tools</b> are specific to <b>Players / Customers</b> mode. "
+                        "Switch to that mode at the top to use the worklist and trends.", "tip")
+            else:
+                callout("<b>Host Tools</b>: your action list: who to call, what comp to offer, "
+                        "and who is trending down. At-risk high-value players sort to the top.", "act")
+                if "Trend" in segmented.columns:
+                    st.markdown("<div class='head-violet'>Trends vs prior period</div>", unsafe_allow_html=True)
+                    st.caption("Compared against the previous period file you loaded. Declining means play "
+                               "dropped more than 15%; Rising means it grew that much.")
+                    _tc = segmented["Trend"].value_counts()
+                    r1, r2, r3 = st.columns(3)
+                    r1.metric("Rising", int(_tc.get("Rising", 0)))
+                    r2.metric("Stable", int(_tc.get("Stable", 0)))
+                    r3.metric("Declining", int(_tc.get("Declining", 0)))
+                    _dec = segmented[segmented["Trend"] == "Declining"].copy()
+                    if not _dec.empty:
+                        _dec["TrendPct"] = pd.to_numeric(_dec["TrendPct"], errors="coerce")
+                        _top_dec = _dec.sort_values("TrendPct").head(10)
+                        _tbl_cols = [c for c in ["FullName", "PlayerID", "Segment"] if c in _top_dec.columns]
+                        _tbl = _top_dec[_tbl_cols].copy()
+                        _tbl["Prior NetADT"] = _top_dec["NetADT_Prev"].map(lambda x: money(x, sym))
+                        _tbl["Current NetADT"] = pd.to_numeric(_top_dec["NetADT"], errors="coerce").map(lambda x: money(x, sym))
+                        _tbl["Change"] = _top_dec["TrendPct"].map(lambda x: f"{x:+.0f}%")
+                        st.caption("Biggest declines, the players to reach first:")
+                        st.dataframe(_tbl.astype(str), width='stretch', hide_index=True)
+                        # Point at the decliner that actually matters most: highest current value.
+                        _hv_dec = _dec.copy()
+                        _hv_dec["_cur"] = pd.to_numeric(_hv_dec["NetADT"], errors="coerce")
+                        _hv_dec = _hv_dec[_hv_dec["Segment"].isin(["VIP High Value", "At Risk High Value"])]
+                        if not _hv_dec.empty:
+                            _worst = _hv_dec.sort_values("_cur", ascending=False).iloc[0]
+                            _wn = str(_worst["FullName"]) if "FullName" in _hv_dec.columns else str(_worst.get("PlayerID", "a player"))
+                            _wp = pd.to_numeric(_worst.get("TrendPct"), errors="coerce")
+                            insight(f"Start with <b>{_wn}</b>: a high-value player worth "
+                                    f"{money(_worst['_cur'], sym)}/day whose play is down "
+                                    f"{abs(_wp):.0f}% versus last period. Of your {len(_dec)} decliners, "
+                                    f"{len(_hv_dec)} are high value, those are the calls that protect the most revenue.")
+                        else:
+                            insight(f"{len(_dec)} players are declining, but none are in your high-value "
+                                    "segments, so these are lower priority than an active VIP would be.")
+                    else:
+                        insight("No players are declining versus the prior period.")
+                    divider()
+                else:
+                    callout("<b>Trend analysis is locked.</b> Load a previous period to compare this "
+                            "period against last and see who is trending down.", "tip")
+                    if os.path.exists("sample_players_prev.csv"):
+                        if st.button("Load demo previous period and show trends", type="primary", key="trend_quick"):
+                            st.session_state.prev_df = pd.read_csv("sample_players_prev.csv")
+                            st.session_state.ran = False
+                            st.rerun()
+                        st.caption("This loads the demo prior period, then click Run again to see trends.")
+                    else:
+                        st.caption("To enable this, run generate_prior_period.py once to create the demo file, "
+                                   "or load your own previous period file on the Data step.")
+                    divider()
+
+                st.markdown("<div class='head-amber'>Host Worklist</div>", unsafe_allow_html=True)
+                st.caption("Who a host should reach out to, ranked. At-risk high-value players come first. "
+                           "Suggested comps are illustrative, tune the cutoffs to match your property's reinvestment policy.")
+                tiers = list(DEFAULT_COMP_TIERS)
+                with st.expander("Adjust comp tier cutoffs (NetADT thresholds)"):
+                    st.caption("Set the NetADT at which each comp tier kicks in. Defaults shown.")
+                    c_meal = st.number_input("Meal tier starts at", value=50, step=10)
+                    c_hotel = st.number_input("Hotel tier starts at", value=120, step=10)
+                    c_suite = st.number_input("Suite + event tier starts at", value=250, step=10)
+                    tiers = [(0, "Free play offer"), (c_meal, "Complimentary meal"),
+                             (c_hotel, "Hotel night on us"), (c_suite, "Suite plus event invite")]
+                worklist = build_host_worklist(segmented, sym, tiers)
+                if worklist is not None:
+                    st.markdown(
+                        f"<div class='insight'>How comps are suggested: "
+                        f"<b>Free play</b> under {money(tiers[1][0],sym)}, "
+                        f"<b>meal</b> {money(tiers[1][0],sym)} to {money(tiers[2][0],sym)}, "
+                        f"<b>hotel night</b> {money(tiers[2][0],sym)} to {money(tiers[3][0],sym)}, "
+                        f"<b>suite plus event</b> above {money(tiers[3][0],sym)}. "
+                        "Higher daily value earns a larger offer.</div>",
+                        unsafe_allow_html=True)
+                    st.dataframe(worklist, width='stretch', hide_index=True)
+                    wl_csv = worklist.to_csv(index=False).encode("utf-8")
+                    st.download_button("Download host worklist (CSV)", wl_csv, "host_worklist.csv", "text/csv")
+
+                    with st.expander("Why does a specific player get their comp tier?"):
+                        pick_name = st.selectbox("Pick a player from the worklist", worklist["Player"].tolist())
+                        if "FullName" in segmented.columns:
+                            prow = segmented[segmented["FullName"] == pick_name]
+                        elif "PlayerID" in segmented.columns:
+                            prow = segmented[segmented["PlayerID"].astype(str) == pick_name]
+                        else:
+                            prow = segmented.iloc[0:0]
+                        if not prow.empty:
+                            pv = pd.to_numeric(prow.iloc[0].get("NetADT", 0), errors="coerce")
+                            st.markdown(f"**{pick_name}**: {comp_reason_full(pv if pd.notna(pv) else 0, tiers, sym)}")
+                else:
+                    st.info("No high-value players found to put on a host worklist for this dataset.")
+
+        # ---------------- Data Quality ----------------
+        with tab_quality:
+            callout("<b>Data Quality</b>: proof the pipeline is trustworthy: what was cleaned, "
+                    "what was quarantined and why, and timing per stage.", "act")
+            st.subheader("Data health")
+            st.caption("A quick read on the file before any analysis.")
+            for line in health: st.write("- " + line)
+
+            divider()
+            st.subheader("Cleaning summary")
+            for line in st.session_state.clean_report: st.write("- " + line)
+            if st.session_state.missing_rate > 0.10:
+                st.markdown(f"<span class='critical'>About {st.session_state.missing_rate*100:.0f}% of the value column "
+                            "could not be read as numbers. Check you mapped the right column.</span>", unsafe_allow_html=True)
+
+            divider()
+            st.subheader("Quarantine")
+            _rej = st.session_state.get("rejects")
+            _rej_n = 0 if _rej is None else len(_rej)
+            q1, q2, q3 = st.columns(3)
+            q1.metric("Rows received", f"{len(segmented) + _rej_n:,}")
+            q2.metric("Rows kept", f"{len(segmented):,}")
+            q3.metric("Rows quarantined", f"{_rej_n:,}")
+            if _rej_n:
+                st.caption("Quarantined rows failed identity validation and were excluded from the "
+                           "analysis, each with a reason. Download, fix, and re-upload.")
+                st.dataframe(_rej.head(20).astype(str), width='stretch', hide_index=True)
+                st.download_button("Download quarantined rows (CSV)",
+                                   _rej.to_csv(index=False).encode("utf-8"),
+                                   "quarantined_rows.csv", "text/csv")
+            else:
+                st.caption("No rows were quarantined. Every record passed identity validation.")
+
+            divider()
+            st.subheader("Pipeline run log")
+            st.caption("Rows in and out per stage, with timings. Useful for spotting where rows drop or time is spent.")
             _log = st.session_state.get("run_log", [])
             if _log:
                 st.dataframe(pd.DataFrame(_log).astype(str), width='stretch', hide_index=True)
             else:
                 st.caption("No run log for this session yet.")
 
-        divider()
-        st.markdown("<div class='head-cyan'>Segments</div>", unsafe_allow_html=True)
-        st.markdown("Cyan chart. Hover any bar to see what that " + term("Segment") + " means.", unsafe_allow_html=True)
-        st.altair_chart(segment_chart(counts, meanings, CYAN), width='stretch')
-        insight(segments_insight(counts, value_table, sym))
+        # ---------------- SQL ----------------
+        with tab_sql:
+            callout("<b>SQL</b>: query your segmented output directly. The table is named "
+                    "<b>records</b>. Edit the query below and hit Run.", "act")
+            st.markdown("<div class='head-cyan'>Query with SQL</div>", unsafe_allow_html=True)
+            st.caption("Your segmented output is loaded into an in-memory DuckDB table named records. "
+                       "Write any SQL against it and download the result.")
+            _default_sql = (f'SELECT Segment, COUNT(*) AS records, ROUND(SUM("{value_col}"), 2) AS total_value\n'
+                            'FROM records\n'
+                            'GROUP BY Segment\n'
+                            'ORDER BY total_value DESC')
+            sql_text = st.text_area("SQL query", value=_default_sql, height=140)
+            if st.button("Run query"):
+                try:
+                    import duckdb
+                    con = duckdb.connect()
+                    con.register("records", segmented)
+                    st.session_state.sql_result = con.execute(sql_text).df()
+                    st.session_state.sql_error = None
+                except ImportError:
+                    st.session_state.sql_result = None
+                    st.session_state.sql_error = ("DuckDB is not installed. Add a duckdb line to "
+                                                  "requirements.txt for the cloud deploy, or run "
+                                                  "pip install duckdb locally, then restart the app.")
+                except Exception as q_err:
+                    st.session_state.sql_result = None
+                    st.session_state.sql_error = f"Query failed: {q_err}"
+            if st.session_state.get("sql_error"):
+                st.error(st.session_state.sql_error)
+            elif st.session_state.get("sql_result") is not None:
+                st.dataframe(st.session_state.sql_result, width='stretch', hide_index=True)
+                st.download_button("Download query result (CSV)",
+                                   st.session_state.sql_result.to_csv(index=False).encode("utf-8"),
+                                   "query_result.csv", "text/csv")
 
-        divider()
-        st.subheader("Value by segment")
-        st.caption(f"Total and average value per group, in {cur_name} ({sym}). A small group can hold most of the value.")
-        display_table = value_table.copy()
-        display_table["TotalValue"] = display_table["TotalValue"].map(lambda x: money(x, sym))
-        display_table["AvgValue"] = display_table["AvgValue"].map(lambda x: money(x, sym))
-        st.dataframe(display_table, width='stretch')
+        # ---------------- AI ----------------
+        with tab_ai:
+            callout("<b>AI</b>: recommendations tied to your goal, a record lookup, and a chat "
+                    "you can ask anything about this dataset. If the AI is ever busy it says so, and "
+                    "everything else in the app still works.", "act")
+            st.subheader("Recommended actions")
+            _goal_shown = st.session_state.get("goal", "")
+            if _goal_shown:
+                st.markdown(f"<div class='insight'>Based on what you asked: \u201c{_goal_shown}\u201d</div>",
+                            unsafe_allow_html=True)
+            st.caption("Grounded in your uploaded data.")
+            if st.session_state.get("rec_provider") == "Gemini (backup)":
+                st.markdown("<div class='ai-banner'>Primary AI was busy, these were generated by the backup (Gemini).</div>", unsafe_allow_html=True)
+            elif st.session_state.get("rec_provider") == "none":
+                st.markdown("<div class='ai-banner'>AI was unavailable, so no recommendations were generated. The analytics above are still accurate.</div>", unsafe_allow_html=True)
+            st.markdown(format_recommendations(recs), unsafe_allow_html=True)
+            if mode == "Players / Customers":
+                callout("Looking for the specific players to act on? The ranked <b>Host Worklist</b> "
+                        "in the <b>Host Tools</b> tab lists them by name with a suggested comp for each.", "tip")
 
-        divider()
-        st.subheader("Per-segment breakdown")
-        st.caption("Overview of every segment side by side, then pick one to dig into.")
-        overview = segment_overview_table(segmented, value_col, id_col, sym)
-        st.dataframe(overview, width='stretch', hide_index=True)
-        seg_choice = st.selectbox("Dig into a segment", overview["Segment"].tolist())
-        lines, top_df = segment_deep_dive(segmented, seg_choice, value_col, id_col, sym, meanings)
-        for ln in lines:
-            st.markdown(ln)
-        if not top_df.empty:
-            st.caption("Top records in this segment by value:")
-            st.dataframe(top_df, width='stretch', hide_index=True)
-
-        if mode == "Players / Customers" and "Trend" in segmented.columns:
-            divider()
-            st.markdown("<div class='head-violet'>Trends vs prior period</div>", unsafe_allow_html=True)
-            st.caption("Compared against the previous period file you loaded. Declining means play "
-                       "dropped more than 15%; Rising means it grew that much.")
-            _tc = segmented["Trend"].value_counts()
-            r1, r2, r3 = st.columns(3)
-            r1.metric("Rising", int(_tc.get("Rising", 0)))
-            r2.metric("Stable", int(_tc.get("Stable", 0)))
-            r3.metric("Declining", int(_tc.get("Declining", 0)))
-            _dec = segmented[segmented["Trend"] == "Declining"].copy()
-            if not _dec.empty:
-                _dec["TrendPct"] = pd.to_numeric(_dec["TrendPct"], errors="coerce")
-                _top_dec = _dec.sort_values("TrendPct").head(10)
-                _tbl_cols = [c for c in ["FullName", "PlayerID", "Segment"] if c in _top_dec.columns]
-                _tbl = _top_dec[_tbl_cols].copy()
-                _tbl["Prior NetADT"] = _top_dec["NetADT_Prev"].map(lambda x: money(x, sym))
-                _tbl["Current NetADT"] = pd.to_numeric(_top_dec["NetADT"], errors="coerce").map(lambda x: money(x, sym))
-                _tbl["Change"] = _top_dec["TrendPct"].map(lambda x: f"{x:+.0f}%")
-                st.caption("Biggest declines, the players to reach first:")
-                st.dataframe(_tbl.astype(str), width='stretch', hide_index=True)
-                insight(f"{len(_dec)} players are declining versus the prior period. Declining "
-                        "high-value players are the most urgent win-back calls, they sort to the "
-                        "top of the Host Worklist below with their trend shown.")
-            else:
-                insight("No players are declining versus the prior period.")
-
-        if mode == "Players / Customers":
-            divider()
-            st.markdown("<div class='head-amber'>Host Worklist</div>", unsafe_allow_html=True)
-            st.caption("Who a host should reach out to, ranked. At-risk high-value players come first. "
-                       "Suggested comps are illustrative, tune the cutoffs to match your property's reinvestment policy.")
-            tiers = list(DEFAULT_COMP_TIERS)
-            with st.expander("Adjust comp tier cutoffs (NetADT thresholds)"):
-                st.caption("Set the NetADT at which each comp tier kicks in. Defaults shown.")
-                c_meal = st.number_input("Meal tier starts at", value=50, step=10)
-                c_hotel = st.number_input("Hotel tier starts at", value=120, step=10)
-                c_suite = st.number_input("Suite + event tier starts at", value=250, step=10)
-                tiers = [(0, "Free play offer"), (c_meal, "Complimentary meal"),
-                         (c_hotel, "Hotel night on us"), (c_suite, "Suite plus event invite")]
-            worklist = build_host_worklist(segmented, sym, tiers)
-            if worklist is not None:
-                st.markdown(
-                    f"<div class='insight'>How comps are suggested: "
-                    f"<b>Free play</b> under {money(tiers[1][0],sym)}, "
-                    f"<b>meal</b> {money(tiers[1][0],sym)} to {money(tiers[2][0],sym)}, "
-                    f"<b>hotel night</b> {money(tiers[2][0],sym)} to {money(tiers[3][0],sym)}, "
-                    f"<b>suite plus event</b> above {money(tiers[3][0],sym)}. "
-                    "Higher daily value earns a larger offer.</div>",
-                    unsafe_allow_html=True)
-                st.dataframe(worklist, width='stretch', hide_index=True)
-                wl_csv = worklist.to_csv(index=False).encode("utf-8")
-                st.download_button("Download host worklist (CSV)", wl_csv, "host_worklist.csv", "text/csv")
-
-                with st.expander("Why does a specific player get their comp tier?"):
-                    pick_name = st.selectbox("Pick a player from the worklist", worklist["Player"].tolist())
-                    if "FullName" in segmented.columns:
-                        prow = segmented[segmented["FullName"] == pick_name]
-                    elif "PlayerID" in segmented.columns:
-                        prow = segmented[segmented["PlayerID"].astype(str) == pick_name]
+            with st.expander("Ask a new goal (refreshes just these recommendations)"):
+                st.caption("Type a different goal and regenerate the recommendations above, without "
+                           "re-running the whole pipeline.")
+                new_goal = st.text_input("New goal", placeholder=st.session_state.get("goal", ""),
+                                         key="new_goal_box")
+                if st.button("Refresh recommendations", key="refresh_recs"):
+                    if new_goal.strip():
+                        with st.spinner("Regenerating recommendations for the new goal..."):
+                            _r, _p = get_recommendations(
+                                st.session_state.chat_role,
+                                st.session_state.get("profile", ""),
+                                st.session_state.counts.to_string(),
+                                st.session_state.value_table["TotalValue"].to_string(),
+                                new_goal.strip(),
+                                st.session_state.sym, st.session_state.cur_name,
+                                st.session_state.get("top_players", ""))
+                        st.session_state.recs = _r
+                        st.session_state.rec_provider = _p
+                        st.session_state.goal = new_goal.strip()
+                        st.rerun()
                     else:
-                        prow = segmented.iloc[0:0]
-                    if not prow.empty:
-                        pv = pd.to_numeric(prow.iloc[0].get("NetADT", 0), errors="coerce")
-                        st.markdown(f"**{pick_name}**: {comp_reason_full(pv if pd.notna(pv) else 0, tiers, sym)}")
-            else:
-                st.info("No high-value players found to put on a host worklist for this dataset.")
+                        st.warning("Type a goal first.")
 
-        divider()
-        st.markdown("<div class='head-violet'>Value distribution</div>", unsafe_allow_html=True)
-        st.caption(f"Violet chart. Records grouped into equal-size value bands, in {cur_name} ({sym}). Rank based so skew does not bunch them.")
-        band = value_band_chart(segmented[value_col], value_col, sym, VIOLET)
-        if band is not None: st.altair_chart(band, width='stretch')
-        insight(distribution_insight(segmented[value_col], sym))
-
-        if pareto is not None:
             divider()
-            st.markdown("<div class='head-amber'>Spend Concentration (Pareto)</div>", unsafe_allow_html=True)
-            st.markdown("<span style='color:#F5A623'>Amber chart.</span> Total offer dollars by category. The "
-                        + term("Pareto") + f" cumulative percent shows how concentrated the spend is. Figures in {cur_name} ({sym}).",
-                        unsafe_allow_html=True)
-            st.altair_chart(pareto_chart(pareto, AMBER), width='stretch')
-            show = pareto.copy()
-            show["Total Offer Dollars"] = show["RawTotal"].map(lambda x: money(x, sym))
-            st.dataframe(show[["Category", "Total Offer Dollars", "Cumulative %"]], width='stretch', hide_index=True)
-            insight(pareto_insight(pareto, sym))
+            render_record_lookup()
 
-        divider()
-        st.subheader("Look up an individual record")
-        st.caption("Open the left sidebar to search any record by name or ID, see why it landed in its segment, "
-                   "and get a tailored AI action. It lives in the sidebar so it never disturbs this page.")
+            divider()
+            render_chat_panel()
 
-        divider()
-        st.subheader("Recommended actions")
-        _goal_shown = st.session_state.get("goal", "")
-        if _goal_shown:
-            st.markdown(f"<div class='insight'>Based on what you asked: \u201c{_goal_shown}\u201d</div>",
-                        unsafe_allow_html=True)
-        st.caption("Grounded in your uploaded data.")
-        if st.session_state.get("rec_provider") == "Gemini (backup)":
-            st.markdown("<div class='ai-banner'>Primary AI was busy, these were generated by the backup (Gemini).</div>", unsafe_allow_html=True)
-        elif st.session_state.get("rec_provider") == "none":
-            st.markdown("<div class='ai-banner'>AI was unavailable, so no recommendations were generated. The analytics above are still accurate.</div>", unsafe_allow_html=True)
-        st.markdown(format_recommendations(recs), unsafe_allow_html=True)
+            divider()
+            with st.expander("Glossary of key terms"):
+                for k, v in GLOSSARY.items():
+                    st.markdown(f"**{k}.** {v}")
 
-        divider()
-        st.subheader("Glossary")
-        with st.expander("Key terms explained"):
-            for k, v in GLOSSARY.items():
-                st.markdown(f"**{k}.** {v}")
-
-        divider()
-        st.markdown("<div class='head-cyan'>Query with SQL</div>", unsafe_allow_html=True)
-        st.caption("Your segmented output is loaded into an in-memory DuckDB table named records. "
-                   "Write any SQL against it and download the result.")
-        _default_sql = (f'SELECT Segment, COUNT(*) AS records, ROUND(SUM("{value_col}"), 2) AS total_value\n'
-                        'FROM records\n'
-                        'GROUP BY Segment\n'
-                        'ORDER BY total_value DESC')
-        sql_text = st.text_area("SQL query", value=_default_sql, height=140)
-        if st.button("Run query"):
-            try:
-                import duckdb
-                con = duckdb.connect()
-                con.register("records", segmented)
-                st.session_state.sql_result = con.execute(sql_text).df()
-                st.session_state.sql_error = None
-            except ImportError:
-                st.session_state.sql_result = None
-                st.session_state.sql_error = ("DuckDB is not installed. Add a duckdb line to "
-                                              "requirements.txt for the cloud deploy, or run "
-                                              "pip install duckdb locally, then restart the app.")
-            except Exception as q_err:
-                st.session_state.sql_result = None
-                st.session_state.sql_error = f"Query failed: {q_err}"
-        if st.session_state.get("sql_error"):
-            st.error(st.session_state.sql_error)
-        elif st.session_state.get("sql_result") is not None:
-            st.dataframe(st.session_state.sql_result, width='stretch', hide_index=True)
-            st.download_button("Download query result (CSV)",
-                               st.session_state.sql_result.to_csv(index=False).encode("utf-8"),
-                               "query_result.csv", "text/csv")
-
-        divider()
-        st.subheader("Export")
-        e1, e2 = st.columns(2)
-        csv = segmented.to_csv(index=False).encode("utf-8")
-        e1.download_button("Download segmented data (CSV)", csv, "segmented_output.csv", "text/csv")
-        report_txt = build_summary_report(cfg["title"], health, value_table, recs).encode("utf-8")
-        e2.download_button("Download summary report (TXT)", report_txt, "segmentation_summary.txt", "text/plain")
-
-render_sidebar()
 
 st.markdown(
     "<div id='bc-footer'>"
