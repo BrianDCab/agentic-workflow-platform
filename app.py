@@ -279,7 +279,7 @@ def _groq_call(prompt, system=None):
     client = Groq(api_key=get_key("GROQ_API_KEY"))
     messages = ([{"role": "system", "content": system}] if system else []) + \
                [{"role": "user", "content": prompt}]
-    r = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=messages)
+    r = client.chat.completions.create(model="openai/gpt-oss-120b", messages=messages)
     return r.choices[0].message.content
 
 def _gemini_call(prompt, system=None):
@@ -291,7 +291,7 @@ def _gemini_call(prompt, system=None):
 
 def ai_generate(prompt, system=None):
     try:
-        return _groq_call(prompt, system), "Groq (llama-3.3-70b)"
+        return _groq_call(prompt, system), "Groq (gpt-oss-120b)"
     except Exception:
         try:
             return _gemini_call(prompt, system), "Gemini (backup)"
@@ -1182,7 +1182,7 @@ if mode == "How It Was Built":
         "**Python** for everything. **pandas** for ingestion, cleaning, and transformation. "
         "**DuckDB** for in-app SQL queries over the segmented output. "
         "**Altair** for the charts. **Streamlit** for the interface and session state. "
-        "**Groq (Llama 3.3 70B)** as the primary LLM with **Google Gemini 1.5 Flash** as automatic "
+        "**Groq (GPT-OSS 120B)** as the primary LLM with **Google Gemini 1.5 Flash** as automatic "
         "failover. Deployed on **Streamlit Community Cloud**, continuously redeployed from "
         "**GitHub** on every push, with API keys held in the platform's secrets manager, never in code.")
 
